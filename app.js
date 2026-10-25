@@ -7,6 +7,26 @@ window.THREE = THREE;
 const FOLLOW_ALPHA = 0.25;        // smoothing of later sightings of the photo
 const FIND_WAIT = 4000;           // ms without finding the photo before offering to place by hand
 const PLACE_DISTANCE = 12;        // how far away a hand-placed scene stands (world units, about metres)
+const PLACE_TRIES = 3;            // taps a visitor gets to place the sculpture between the pillars
+
+// Where people walk through the view, marked on the photo: the ceiling light and cross beam, and
+// the three balconies. The target is softened there, so the photo is still found while people
+// move about. Each area is traced row by row as [y, left, right], in photo pixels.
+const PEOPLE = [
+  [[278, 331, 365], [284, 303, 392], [290, 291, 407], [296, 285, 419], [302, 281, 429], [308, 281, 436],
+    [314, 285, 446], [320, 290, 454], [326, 300, 464], [332, 313, 471], [338, 339, 480]],
+  [[617, 215, 424], [623, 190, 554], [629, 176, 576], [635, 167, 591], [641, 163, 599], [647, 159, 600],
+    [653, 156, 602], [659, 155, 603], [665, 154, 606], [671, 154, 607], [677, 155, 608], [683, 161, 611],
+    [689, 170, 609], [695, 361, 488]],
+  [[736, 206, 245], [742, 161, 333], [748, 144, 463], [754, 131, 490], [760, 125, 508], [766, 118, 525],
+    [772, 112, 539], [778, 107, 556], [784, 102, 571], [790, 99, 585], [796, 95, 595], [802, 90, 598],
+    [808, 88, 600], [814, 85, 603], [820, 85, 605], [826, 86, 607], [832, 499, 610], [838, 501, 612],
+    [844, 536, 614], [850, 560, 616], [856, 586, 619], [862, 603, 622]],
+  [[966, 329, 519], [972, 239, 544], [978, 206, 558], [984, 187, 567], [990, 169, 572], [996, 159, 576],
+    [1002, 152, 580], [1008, 146, 583], [1014, 142, 586], [1020, 140, 590], [1026, 142, 595],
+    [1032, 144, 597], [1038, 150, 603]],
+];
+const PEOPLE_MARGIN = 12;         // photo pixels the softening reaches past each marked edge
 const DEBUG = new URLSearchParams(location.search).has('debug');
 
 // ---------------------------------------------------------------------------
@@ -50,15 +70,69 @@ function refreshStart() {
 // Same output as 8th Wall's image-target-cli: the centre 3:4 region as a
 // 480×640 greyscale "luminance" image.
 // ---------------------------------------------------------------------------
+const canvas2d = (w, h) => {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  return [c, c.getContext('2d', { willReadFrequently: true })];
+};
+
+// Blur away the detail where people walk (PEOPLE), with soft edges: the detector finds nothing to
+// track there, and no hard edge is left round each area for it to latch onto instead.
+function softenWherePeopleWalk(lum, crop) {
+  const k = lum.width / crop.w;   // target pixels per photo pixel
+  const toTarget = ([x, y]) => [(x - crop.x) * k, (y - crop.y) * k];
+  const [mask, mg] = canvas2d(lum.width, lum.height);
+  mg.fillStyle = '#000';            // opaque, so the soft edges stay in the colour, not the alpha
+  mg.fillRect(0, 0, mask.width, mask.height);
+  mg.fillStyle = mg.strokeStyle = '#fff';
+  mg.lineJoin = 'round';
+  mg.lineWidth = 2 * PEOPLE_MARGIN * k;
+  for (const rows of PEOPLE) {
+    const outline = [...rows.map(([y, l]) => [l, y]), ...rows.slice().reverse().map(([y, , r]) => [r, y])].map(toTarget);
+    mg.beginPath();
+    outline.forEach(([x, y], i) => (i ? mg.lineTo(x, y) : mg.moveTo(x, y)));
+    mg.closePath();
+    mg.fill();
+    mg.stroke();
+  }
+  // soft edges and the blurred picture: halved again and again, then doubled back up the same
+  // way, which blurs smoothly (one big jump would leave soft-edged blocks)
+  const blur = (src, steps) => {
+    const levels = [src];
+    for (let i = 0; i < steps; i++) {
+      const prev = levels[levels.length - 1];
+      const [c, g] = canvas2d(Math.max(1, Math.round(prev.width / 2)), Math.max(1, Math.round(prev.height / 2)));
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(prev, 0, 0, c.width, c.height);
+      levels.push(c);
+    }
+    let up = levels[levels.length - 1];
+    for (let i = levels.length - 2; i >= 0; i--) {
+      const [c, g] = canvas2d(levels[i].width, levels[i].height);
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(up, 0, 0, c.width, c.height);
+      up = c;
+    }
+    return up.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, lum.width, lum.height).data;
+  };
+  const soft = blur(mask, 3);
+  const blurred = blur(lum, 4);
+  const lg = lum.getContext('2d', { willReadFrequently: true });
+  const px = lg.getImageData(0, 0, lum.width, lum.height);
+  for (let i = 0; i < px.data.length; i += 4) {
+    const m = soft[i] / 255;
+    px.data[i] = px.data[i + 1] = px.data[i + 2] = px.data[i] * (1 - m) + blurred[i] * m;
+  }
+  lg.putImageData(px, 0, 0);
+}
+
 async function buildTarget() {
   const img = new Image();
   img.src = PHOTO.src;
   await img.decode();
   const crop = { x: 0, y: PHOTO.cropTop, w: img.naturalWidth, h: PHOTO.cropHeight };
-  const lum = document.createElement('canvas');
-  lum.width = 480;
-  lum.height = 640;
-  const lg = lum.getContext('2d', { willReadFrequently: true });
+  const [lum, lg] = canvas2d(480, 640);
   lg.drawImage(img, crop.x, crop.y, crop.w, crop.h, 0, 0, lum.width, lum.height);
   const px = lg.getImageData(0, 0, lum.width, lum.height);
   for (let i = 0; i < px.data.length; i += 4) {
@@ -66,7 +140,9 @@ async function buildTarget() {
     px.data[i] = px.data[i + 1] = px.data[i + 2] = y;
   }
   lg.putImageData(px, 0, 0);
+  softenWherePeopleWalk(lum, crop);
   const blob = await new Promise((r) => lum.toBlob(r, 'image/jpeg', 0.92));
+  if (DEBUG) window.__targetImage = lum.toDataURL('image/png');
   const now = Date.now();
   return {
     imagePath: URL.createObjectURL(blob),
@@ -135,7 +211,9 @@ function onImagePose(detail, camera) {
 // building itself it is only found from the exact spot it was taken. Instead: frame the
 // pillars like the photo and tap between them. The scene stands there, upright and facing
 // you, as wide as the view, and world tracking keeps it in the room as you move.
+// A visitor gets PLACE_TRIES taps; after the last one the sculpture stays where it is.
 // ---------------------------------------------------------------------------
+let triesLeft = PLACE_TRIES;
 const UP = new THREE.Vector3(0, 1, 0);
 const _ndc = new THREE.Vector2();
 const _ray = new THREE.Raycaster();
@@ -146,7 +224,7 @@ const _look = new THREE.Vector3();
 const _basis = new THREE.Matrix4();
 
 function placeByHand(clientX, clientY) {
-  if (!state.running || !state.piece) return;
+  if (!state.running || !state.piece || triesLeft <= 0) return;
   const { camera } = XR8.Threejs.xrScene();
   const rect = ui.xrCanvas.getBoundingClientRect();
   _ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, 1 - ((clientY - rect.top) / rect.height) * 2);
@@ -173,9 +251,11 @@ function placeByHand(clientX, clientY) {
   anchor.byHand = true;
   anchor.group.visible = true;
   applyAnchor();
+  triesLeft--;
   clearTimeout(findTimer);
-  setHint('Placed. Tap again to move it.');
-  findTimer = setTimeout(() => setHint(null), 2500);
+  if (triesLeft > 0) setHint(`Placed. Tap again to move it (${triesLeft} ${triesLeft === 1 ? 'try' : 'tries'} left)`);
+  else setHint('Placed');
+  findTimer = setTimeout(() => setHint(null), triesLeft > 0 ? 3500 : 2000);
 }
 
 let tapFrom = null;
@@ -209,6 +289,7 @@ const arModule = {
     anchor.placed = false;
     anchor.byHand = false;
     anchor.group.visible = false;
+    triesLeft = PLACE_TRIES;
     if (!anchor.group.children.length) anchor.group.add(state.piece.root);
     scene.add(anchor.group);
     window.__xr = { scene, camera, renderer, anchor };
@@ -222,7 +303,7 @@ const arModule = {
       setHint('Point your camera at the view in the photo');
       clearTimeout(findTimer);
       findTimer = setTimeout(() => {
-        if (!anchor.placed) setHint('Not found? Frame the pillars like the photo, then tap between them');
+        if (!anchor.placed) setHint(`Not found? Frame the pillars like the photo, then tap between them (${PLACE_TRIES} tries)`);
       }, FIND_WAIT);
     }
     if (status === 'failed' || status === 'denied') {
@@ -291,6 +372,7 @@ function stopAR() {
   anchor.placed = false;
   anchor.byHand = false;
   anchor.group.visible = false;
+  triesLeft = PLACE_TRIES;
   ui.ar.hidden = true;
   ui.xrCanvas.style.display = 'none';
   ui.setup.hidden = false;

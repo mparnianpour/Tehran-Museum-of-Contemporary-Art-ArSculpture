@@ -12,8 +12,11 @@ around it dims to a deep blue and its light flickers.
 1. Open the link on a phone (Safari on iPhone, Chrome on Android) and tap **Start camera**.
 2. Point the camera at the photograph, or at the atrium framed like the photograph.
 3. In the atrium itself, if it isn't found after a few seconds: frame the pillars like the
-   photograph, then tap the spot between them. The scene stays there as you move; tap again to
-   move it.
+   photograph, then tap the spot between them. You get three tries; the scene stays where the
+   last one put it, and holds there as you move.
+
+People walking along the balconies, or across the ceiling light, don't stop the photograph
+being found: those areas are softened in the image the camera looks for (`PEOPLE` in `app.js`).
 
 ## What's here
 
