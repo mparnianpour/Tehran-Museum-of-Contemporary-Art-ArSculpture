@@ -7,6 +7,9 @@ around it dims to a deep blue and its light flickers.
 
 **Live:** https://mparnianpour.github.io/Tehran-Museum-of-Contemporary-Art-ArSculpture/
 
+**Previous version (backup):** https://mparnianpour.github.io/Tehran-Museum-of-Contemporary-Art-ArSculpture/backup/
+(the piece as it was before the pillars and extra photos; git tag `live-before-pillars`)
+
 ## Using it
 
 1. Open the link on a phone (Safari on iPhone, Chrome on Android) and tap **Start camera**.
