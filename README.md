@@ -8,7 +8,7 @@ around it dims to a deep blue and its light flickers.
 **Live:** https://mparnianpour.github.io/Tehran-Museum-of-Contemporary-Art-ArSculpture/
 
 **Previous version (backup):** https://mparnianpour.github.io/Tehran-Museum-of-Contemporary-Art-ArSculpture/backup/
-(the piece as it was before the pillars and extra photos; git tag `live-before-pillars`)
+(the piece as it was before the pillars and extra photos, commit `d3fef83`)
 
 ## Using it
 
