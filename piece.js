@@ -23,55 +23,12 @@ export const PHOTO = { src: 'atrium.jpg', width: W, height: H, cropTop: CROP_TOP
 const at = (x, y, z = 0) => new THREE.Vector3((x - W / 2) / W, (CROP_TOP + CROP_H / 2 - y) / W, z);
 
 // ---------------------------------------------------------------------------
-// More photos of the atrium, from other spots on the ramp (views/, each already cut to 3:4,
-// 720×960). Seeing any of them places the piece too. Each is tied to atrium.jpg through the
-// inner pillars, the plane the sculpture hangs in: the light fixture on the beam between their
-// tops, and the gap between them on the rows below it (photo pixels; atrium.jpg's in TIE).
-// ---------------------------------------------------------------------------
-const TIE = { light: [362, 315], gap: [306, 410] };
-const VIEW_SHOTS = [
-  { name: 'view-1', src: 'views/view-1.jpg', light: [355, 226], gap: [293, 418] },
-  { name: 'view-2', src: 'views/view-2.jpg', light: [374, 10], gap: [307, 436] },
-  { name: 'view-3', src: 'views/view-3.jpg', light: [358, 154], gap: [299, 413] },
-];
-const VIEW_W = 720;
-const VIEW_H = 960;
-
-// toView: a point of atrium.jpg's image space -> the view's (p × scale + offset)
-export const VIEWS = VIEW_SHOTS.map((v) => {
-  const k = (v.gap[1] - v.gap[0]) / (TIE.gap[1] - TIE.gap[0]);   // view pixels per atrium.jpg pixel
-  const scale = (k * W) / VIEW_W;
-  const light = new THREE.Vector3((v.light[0] - VIEW_W / 2) / VIEW_W, (VIEW_H / 2 - v.light[1]) / VIEW_W, 0);
-  const offset = light.sub(at(...TIE.light).multiplyScalar(scale));
-  return { name: v.name, src: v.src, width: VIEW_W, height: VIEW_H, cropTop: 0, cropHeight: VIEW_H, toView: { scale, offset } };
-});
-
-// ---------------------------------------------------------------------------
 // Settings (all in photo pixels, traced from the photo)
 // ---------------------------------------------------------------------------
 const MODEL_URL = new URL('model/simorgh.glb', import.meta.url).href;
 const GAP = [308, 409];          // facing edges of the two inner pillars
 const MODEL_Y = 530;             // the sculpture's centre
 const FILL = 0.92;               // share of the gap the sculpture's width takes
-
-// Pillars that come between a visitor and the sculpture as they walk round the atrium, each
-// traced as [y, left edge, right edge] on two rows and running from `top` to `bottom`.
-// The two big pillars beside the viewpoint hide everything behind them. Their outer edges lie
-// past the photo's sides: a guess at their width (about 2.5 inner pillars).
-const NEAR_PILLARS = [
-  { rows: [[200, -272, 145], [1121, -279, 138]], top: -1500, bottom: 2800 },
-  { rows: [[200, 569, 986], [1121, 579, 996]], top: -1500, bottom: 2800 },
-];
-const NEAR_SHARE = 0.33;         // how far away the big pillars stand, as a share of the inner pillars'
-                                 // distance (measured from photos of the atrium taken at two distances)
-// The two inner pillars, either side of the sculpture, hide the sculpture itself; the light
-// still falls on them.
-const INNER_PILLARS = [
-  { rows: [[360, 251, 306], [1121, 248, 305]], top: 0, bottom: 1150 },
-  { rows: [[360, 411, 469], [1121, 413, 472]], top: 0, bottom: 1150 },
-];
-const VIEW_DISTANCE = 1.2;       // where atrium.jpg was taken from, in image widths in front of it
-                                 // (a phone camera's 44° across the photo)
 
 const SOURCE = [359, 150];       // the light, on the ceiling right above the sculpture
 const BEAM_ANGLE = 13;           // the beam's half-angle, degrees
@@ -322,26 +279,8 @@ uniform float coneOpening;  // its radius where it leaves the ceiling
 uniform vec3 coneCam;       // the camera, in image space
 uniform vec3 coneTint;
 uniform float lightOnSilver;
-uniform vec3 pillarMin[${INNER_PILLARS.length}];   // the inner pillars, as boxes in image space
-uniform vec3 pillarMax[${INNER_PILLARS.length}];
 varying vec3 vImgPos;
 varying vec3 vImgNormal;
-
-// Whether an inner pillar stands between the camera and this point of the silver.
-bool behindPillar() {
-  vec3 d = vImgPos - coneCam;
-  d = mix(vec3(1e-6), d, step(1e-6, abs(d)));
-  for (int i = 0; i < ${INNER_PILLARS.length}; i++) {
-    vec3 a = (pillarMin[i] - coneCam) / d;
-    vec3 b = (pillarMax[i] - coneCam) / d;
-    vec3 lo = min(a, b);
-    vec3 hi = max(a, b);
-    float enter = max(max(lo.x, lo.y), lo.z);
-    float leave = min(min(hi.x, hi.y), hi.z);
-    if (enter < leave && leave > 0.0 && enter < 1.0) return true;
-  }
-  return false;
-}
 
 vec3 coneLight() {
   vec3 N = normalize(vImgNormal);
@@ -364,69 +303,10 @@ function lightSilverFromAbove(materials, uniforms) {
         .replace('#include <fog_vertex>', '#include <fog_vertex>' + SILVER_VS);
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>' + SILVER_FS_PARS)
-        .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nif (behindPillar()) discard;')
         .replace('#include <opaque_fragment>', 'outgoingLight += coneLight();\n#include <opaque_fragment>');
     };
     m.customProgramCacheKey = () => 'silver-in-cone';
   }
-}
-
-// ---------------------------------------------------------------------------
-// The pillars, as blocks in image space. Each is laid out from the photo's own viewpoint,
-// VIEW_DISTANCE straight out from its centre: from there a block covers exactly the pillar
-// traced on the photo, and as a visitor walks it slides across the view as the pillar does.
-// Square in section: as deep as it is wide.
-// ---------------------------------------------------------------------------
-function pillarCorners(p, zMid) {
-  const D = VIEW_DISTANCE;
-  const [[y0, l0, r0], [y1, l1, r1]] = p.rows;
-  const edgesAt = (y) => {
-    const k = (y - y0) / (y1 - y0);
-    return [l0 + (l1 - l0) * k, r0 + (r1 - r0) * k];
-  };
-  const shrink = (D - zMid) / D;                 // photo size -> size at the pillar's depth
-  const half = (((r0 - l0) / W) * shrink) / 2;   // half its width, and so half its depth
-  const zFront = zMid + half;
-  const zBack = zMid - half;
-  // an edge seen against the middle of the view shows the pillar's back corner, an outer edge its front one
-  const edgeX = (x, isRight) => {
-    const u = (x - W / 2) / W;
-    const z = (isRight ? u < 0 : u > 0) ? zBack : zFront;
-    return (u * (D - z)) / D;
-  };
-  const corners = [];
-  for (const y of [p.top, p.bottom]) {
-    const [l, r] = edgesAt(y);
-    const v = ((CROP_TOP + CROP_H / 2 - y) / W) * shrink;
-    for (const z of [zFront, zBack]) corners.push(new THREE.Vector3(edgeX(l, false), v, z), new THREE.Vector3(edgeX(r, true), v, z));
-  }
-  return corners;   // [top, bottom] × [front, back] × [left, right]
-}
-
-const BLOCK_FACES = [[0, 1, 4, 5], [2, 3, 6, 7], [0, 2, 4, 6], [1, 3, 5, 7], [0, 1, 2, 3], [4, 5, 6, 7]];
-function blockGeometry(corners) {
-  const g = new THREE.BufferGeometry().setFromPoints(corners);
-  g.setIndex(BLOCK_FACES.flatMap(([a, b, c, d]) => [a, b, c, b, d, c]));
-  return g;
-}
-
-// Whether the line from a to b passes through the box.
-function crosses(a, b, box) {
-  let enter = 0;
-  let leave = 1;
-  for (const k of ['x', 'y', 'z']) {
-    const d = b[k] - a[k];
-    if (Math.abs(d) < 1e-9) {
-      if (a[k] < box.min[k] || a[k] > box.max[k]) return false;
-      continue;
-    }
-    const t0 = (box.min[k] - a[k]) / d;
-    const t1 = (box.max[k] - a[k]) / d;
-    enter = Math.max(enter, Math.min(t0, t1));
-    leave = Math.min(leave, Math.max(t0, t1));
-    if (enter > leave) return false;
-  }
-  return true;
 }
 
 // Glints: the spots on the silver that throw the light straight back at someone in front of
@@ -523,7 +403,7 @@ export function createEnvironment(renderer) {
 // ---------------------------------------------------------------------------
 // The piece
 // ---------------------------------------------------------------------------
-export async function loadPiece({ onProgress, debug = false } = {}) {
+export async function loadPiece({ onProgress } = {}) {
   const gltf = await new GLTFLoader().loadAsync(MODEL_URL, (e) => {
     if (onProgress && e.total) onProgress(e.loaded / e.total);
   });
@@ -559,32 +439,6 @@ export async function loadPiece({ onProgress, debug = false } = {}) {
   const dust = createDust(apex, LIGHT_END / W, 0.002);
   root.add(wallLight, dust);
 
-  // The pillars. The big ones beside the viewpoint only fill the depth buffer, so whatever is
-  // behind them isn't drawn; the inner ones hide the sculpture in its own shader (behindPillar),
-  // so the light still falls on them. ?debug shows them: near blue, inner pink.
-  const blocks = [
-    ...NEAR_PILLARS.map((p) => ({ corners: pillarCorners(p, VIEW_DISTANCE * (1 - NEAR_SHARE)), near: true })),
-    ...INNER_PILLARS.map((p) => ({ corners: pillarCorners(p, z), near: false })),
-  ].map((b) => ({ ...b, geometry: blockGeometry(b.corners), box: new THREE.Box3().setFromPoints(b.corners) }));
-  const hider = new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide });
-  for (const b of blocks) {
-    if (b.near) {
-      const mesh = new THREE.Mesh(b.geometry, hider);
-      mesh.renderOrder = -1;   // before everything it hides
-      mesh.frustumCulled = false;
-      root.add(mesh);
-    }
-    if (debug) {
-      const shown = new THREE.Mesh(b.geometry, new THREE.MeshBasicMaterial({
-        color: b.near ? 0x3a7bff : 0xff3ad0, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
-      }));
-      shown.renderOrder = 5;
-      shown.frustumCulled = false;
-      root.add(shown);
-    }
-  }
-  const inner = blocks.filter((b) => !b.near).map((b) => b.box);
-
   const source = new THREE.Sprite(new THREE.SpriteMaterial({
     map: sourceTexture(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false,
   }));
@@ -610,8 +464,6 @@ export async function loadPiece({ onProgress, debug = false } = {}) {
     coneCam: { value: new THREE.Vector3() },
     coneTint: { value: CONE_CORE },
     lightOnSilver: { value: LIGHT_ON_SILVER },
-    pillarMin: { value: inner.map((box) => box.min) },
-    pillarMax: { value: inner.map((box) => box.max) },
   };
   lightSilverFromAbove(materials, silver);
   // image space follows the photo, wherever the AR session has put it
@@ -651,14 +503,12 @@ export async function loadPiece({ onProgress, debug = false } = {}) {
       wallLight.material.uniforms.time.value = time;
       dust.material.uniforms.time.value = time;
       for (const m of materials) m.envMapIntensity = ENV_INTENSITY * light;
-      // a glint shows when the phone is in line with its reflection, and twinkles; a pillar in
-      // the way hides it (glints are drawn over everything, so they're checked here)
+      // a glint shows when the phone is in line with its reflection, and twinkles
       for (const g of glints) {
         toCam.copy(silver.coneCam.value).sub(g.sprite.position).normalize();
         const aligned = Math.pow(Math.max(toCam.dot(g.dir), 0), 6);
         const twinkle = 0.35 + 0.65 * Math.pow(0.5 + 0.5 * Math.sin(time * 2.1 + g.phase), 3);
-        const hidden = blocks.some((b) => crosses(silver.coneCam.value, g.sprite.position, b.box));
-        const k = hidden ? 0 : aligned * twinkle;
+        const k = aligned * twinkle;
         g.sprite.material.opacity = k;
         g.sprite.scale.setScalar((GLINT_SIZE / W) * (0.5 + 0.5 * k));
         g.sprite.material.rotation = time * 0.3 + g.phase;

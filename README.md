@@ -7,9 +7,6 @@ around it dims to a deep blue and its light flickers.
 
 **Live:** https://mparnianpour.github.io/Tehran-Museum-of-Contemporary-Art-ArSculpture/
 
-**Previous version (backup):** https://mparnianpour.github.io/Tehran-Museum-of-Contemporary-Art-ArSculpture/backup/
-(the piece as it was before the pillars and extra photos, commit `d3fef83`)
-
 ## Using it
 
 1. Open the link on a phone (Safari on iPhone, Chrome on Android) and tap **Start camera**.
@@ -21,28 +18,15 @@ around it dims to a deep blue and its light flickers.
 People walking along the balconies, or across the ceiling light, don't stop the photograph
 being found: those areas are softened in the image the camera looks for (`PEOPLE` in `app.js`).
 
-`atrium.jpg` is the parent photograph: the scene is placed from it. Three more photos from
-nearby spots on the ramp (`views/`) help find the atrium from more places. Each is tied to
-`atrium.jpg` by the inner pillars (`TIE` and `VIEW_SHOTS` in `piece.js`), so whichever one the
-camera sees, the sculpture lands in the same place.
-
-As you walk along the ramp, the pillars hide the sculpture. The two big pillars beside the
-viewpoint hide it and its light; the two inner pillars hide the sculpture itself, and the light
-still falls on them. Add `?debug` to the address to see them as blue (big) and pink (inner)
-blocks, which should sit on the real pillars. Their outlines, how far away the big ones stand
-and how wide they are, are set at the top of `piece.js` (`NEAR_PILLARS`, `NEAR_SHARE`,
-`INNER_PILLARS`).
-
 ## What's here
 
 | File | What it does |
 | --- | --- |
 | `index.html` | The page: start screen and camera view |
 | `app.js` | The AR session: finds the photograph, or places the scene where you tap |
-| `piece.js` | The scene: the sculpture, the light and its pattern, dust, glints, the pillars that hide them |
+| `piece.js` | The scene: the sculpture, the light and its pattern, dust, glints |
 | `shade.js` | The shade over the camera view (from the Turrell walls work): 55%, deep blue, flickering |
 | `atrium.jpg` | The photograph the camera looks for |
-| `views/` | More photos of the atrium from nearby spots, found as well |
 | `model/simorgh.glb` | The sculpture |
 | `lib/` | 8th Wall engine, XRExtras, three.js |
 
