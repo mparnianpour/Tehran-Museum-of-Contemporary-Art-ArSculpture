@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { loadPiece, createEnvironment, PHOTO } from './piece.js';
+import { loadPiece, createEnvironment, PHOTO, VIEWS } from './piece.js';
 
 // 8th Wall's three.js module looks for a global THREE.
 window.THREE = THREE;
@@ -39,7 +39,7 @@ const ui = {
 };
 
 const state = {
-  target: null,       // 8th Wall image target data
+  targets: [],        // 8th Wall image target data: atrium.jpg, then the other views
   piece: null,
   xrReady: false,
   running: false,
@@ -58,7 +58,7 @@ function setHint(text) {
 }
 
 function refreshStart() {
-  const ready = !!state.target && !!state.piece && state.xrReady;
+  const ready = state.targets.length > 0 && !!state.piece && state.xrReady;
   ui.start.disabled = !ready;
   if (ready) ui.status.textContent = '';
   else if (!state.piece) ui.status.textContent = `Loading the Simorgh… ${Math.round(state.progress * 100)}%`;
@@ -127,11 +127,13 @@ function softenWherePeopleWalk(lum, crop) {
   lg.putImageData(px, 0, 0);
 }
 
-async function buildTarget() {
+// photo: atrium.jpg (PHOTO) or one of the other views; soften: blur where people walk (PEOPLE
+// is traced on atrium.jpg only)
+async function buildTarget(name, photo, soften) {
   const img = new Image();
-  img.src = PHOTO.src;
+  img.src = photo.src;
   await img.decode();
-  const crop = { x: 0, y: PHOTO.cropTop, w: img.naturalWidth, h: PHOTO.cropHeight };
+  const crop = { x: 0, y: photo.cropTop, w: img.naturalWidth, h: photo.cropHeight };
   const [lum, lg] = canvas2d(480, 640);
   lg.drawImage(img, crop.x, crop.y, crop.w, crop.h, 0, 0, lum.width, lum.height);
   const px = lg.getImageData(0, 0, lum.width, lum.height);
@@ -140,14 +142,14 @@ async function buildTarget() {
     px.data[i] = px.data[i + 1] = px.data[i + 2] = y;
   }
   lg.putImageData(px, 0, 0);
-  softenWherePeopleWalk(lum, crop);
+  if (soften) softenWherePeopleWalk(lum, crop);
   const blob = await new Promise((r) => lum.toBlob(r, 'image/jpeg', 0.92));
-  if (DEBUG) window.__targetImage = lum.toDataURL('image/png');
+  if (DEBUG) (window.__targetImages ||= {})[name] = lum.toDataURL('image/png');
   const now = Date.now();
   return {
     imagePath: URL.createObjectURL(blob),
     metadata: null,
-    name: 'atrium',
+    name,
     type: 'PLANAR',
     properties: {
       top: crop.y, left: crop.x, width: crop.w, height: crop.h,
@@ -182,10 +184,18 @@ function applyAnchor() {
   anchor.group.scale.setScalar(anchor.scale);
 }
 
+const VIEW_BY_NAME = new Map(VIEWS.map((v) => [v.name, v]));
+
 function onImagePose(detail, camera) {
   const pos = new THREE.Vector3(detail.position.x, detail.position.y, detail.position.z);
   const quat = new THREE.Quaternion(detail.rotation.x, detail.rotation.y, detail.rotation.z, detail.rotation.w).normalize();
-  const scale = detail.scale * detail.scaledWidth;   // world size of 1 image width
+  let scale = detail.scale * detail.scaledWidth;   // world size of 1 image width
+  // one of the other views: where atrium.jpg's image space lies, from this one's
+  const view = VIEW_BY_NAME.get(detail.name);
+  if (view) {
+    pos.add(view.toView.offset.clone().applyQuaternion(quat).multiplyScalar(scale));
+    scale *= view.toView.scale;
+  }
   if (!anchor.placed || anchor.byHand) {
     anchor.pos.copy(pos); anchor.quat.copy(quat); anchor.scale = scale;
     anchor.placed = true;
@@ -343,7 +353,7 @@ function startAR() {
   ui.xrCanvas.style.display = 'block';
 
   XR8.XrController.configure({
-    imageTargetData: [state.target],
+    imageTargetData: state.targets,
     disableWorldTracking: !state.worldTracking,
   });
   XR8.clearCameraPipelineModules();
@@ -387,8 +397,12 @@ ui.back.addEventListener('click', stopAR);
 // Boot
 // ---------------------------------------------------------------------------
 refreshStart();
-buildTarget()
-  .then((t) => { state.target = t; refreshStart(); })
+// atrium.jpg is needed; the other views only help, so one that fails to load is left out
+Promise.all([
+  buildTarget('atrium', PHOTO, true),
+  ...VIEWS.map((v) => buildTarget(v.name, v, false).catch((e) => { console.warn(`${v.src} left out:`, e); return null; })),
+])
+  .then((t) => { state.targets = t.filter(Boolean); refreshStart(); })
   .catch((e) => { console.error(e); showError('The photograph could not be loaded.'); });
 loadPiece({ onProgress: (p) => { state.progress = p; refreshStart(); } })
   .then((p) => { state.piece = p; refreshStart(); })

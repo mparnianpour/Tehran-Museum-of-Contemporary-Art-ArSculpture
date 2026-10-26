@@ -23,6 +23,30 @@ export const PHOTO = { src: 'atrium.jpg', width: W, height: H, cropTop: CROP_TOP
 const at = (x, y, z = 0) => new THREE.Vector3((x - W / 2) / W, (CROP_TOP + CROP_H / 2 - y) / W, z);
 
 // ---------------------------------------------------------------------------
+// More photos of the atrium, from other spots on the ramp (views/, each already cut to 3:4,
+// 720×960). Seeing any of them places the piece too. Each is tied to atrium.jpg through the
+// inner pillars, the plane the sculpture hangs in: the light fixture on the beam between their
+// tops, and the gap between them on the rows below it (photo pixels; atrium.jpg's in TIE).
+// ---------------------------------------------------------------------------
+const TIE = { light: [362, 315], gap: [306, 410] };
+const VIEW_SHOTS = [
+  { name: 'view-1', src: 'views/view-1.jpg', light: [355, 226], gap: [293, 418] },
+  { name: 'view-2', src: 'views/view-2.jpg', light: [374, 10], gap: [307, 436] },
+  { name: 'view-3', src: 'views/view-3.jpg', light: [358, 154], gap: [299, 413] },
+];
+const VIEW_W = 720;
+const VIEW_H = 960;
+
+// toView: a point of atrium.jpg's image space -> the view's (p × scale + offset)
+export const VIEWS = VIEW_SHOTS.map((v) => {
+  const k = (v.gap[1] - v.gap[0]) / (TIE.gap[1] - TIE.gap[0]);   // view pixels per atrium.jpg pixel
+  const scale = (k * W) / VIEW_W;
+  const light = new THREE.Vector3((v.light[0] - VIEW_W / 2) / VIEW_W, (VIEW_H / 2 - v.light[1]) / VIEW_W, 0);
+  const offset = light.sub(at(...TIE.light).multiplyScalar(scale));
+  return { name: v.name, src: v.src, width: VIEW_W, height: VIEW_H, cropTop: 0, cropHeight: VIEW_H, toView: { scale, offset } };
+});
+
+// ---------------------------------------------------------------------------
 // Settings (all in photo pixels, traced from the photo)
 // ---------------------------------------------------------------------------
 const MODEL_URL = new URL('model/simorgh.glb', import.meta.url).href;

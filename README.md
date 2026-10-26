@@ -7,6 +7,9 @@ around it dims to a deep blue and its light flickers.
 
 **Live:** https://mparnianpour.github.io/Tehran-Museum-of-Contemporary-Art-ArSculpture/
 
+**Previous version (backup):** https://mparnianpour.github.io/Tehran-Museum-of-Contemporary-Art-ArSculpture/backup/
+(the piece as it was before the extra photos, commit `d3fef83`)
+
 ## Using it
 
 1. Open the link on a phone (Safari on iPhone, Chrome on Android) and tap **Start camera**.
@@ -18,6 +21,11 @@ around it dims to a deep blue and its light flickers.
 People walking along the balconies, or across the ceiling light, don't stop the photograph
 being found: those areas are softened in the image the camera looks for (`PEOPLE` in `app.js`).
 
+`atrium.jpg` is the parent photograph: the scene is placed from it. Three more photos from
+nearby spots on the ramp (`views/`) help find the atrium from more places. Each is tied to
+`atrium.jpg` by the inner pillars (`TIE` and `VIEW_SHOTS` in `piece.js`), so whichever one the
+camera sees, the sculpture lands in the same place.
+
 ## What's here
 
 | File | What it does |
@@ -27,6 +35,8 @@ being found: those areas are softened in the image the camera looks for (`PEOPLE
 | `piece.js` | The scene: the sculpture, the light and its pattern, dust, glints |
 | `shade.js` | The shade over the camera view (from the Turrell walls work): 55%, deep blue, flickering |
 | `atrium.jpg` | The photograph the camera looks for |
+| `views/` | More photos of the atrium from nearby spots, found as well |
+| `backup/` | The previous version, kept live in case this one misbehaves |
 | `model/simorgh.glb` | The sculpture |
 | `lib/` | 8th Wall engine, XRExtras, three.js |
 
