@@ -16,7 +16,10 @@ const SIZE = 308;              // the model looks at a square this many pixels a
 const SQUARE = 1.4;            // ...cut from the view round the sculpture, this many screen widths across
 const INTERVAL = 150;          // ms between depth guesses, at most
 const MIN_POINTS = 12;         // tracked points needed in the square to scale a guess
-const MARGIN = 0.12;           // a real thing must be 12% nearer than the sculpture to hide it
+const NEARER = 0.6;            // a real thing hides the sculpture only when it is at most 60% as far away:
+                               // clearly in front, like someone near you or the big pillars beside you.
+                               // The inner pillars and the ceiling the light falls on, about as far as
+                               // the sculpture, never do (the guess isn't sharp enough to split them)
 const STALE = 1500;            // ms a guess is kept when the next one can't be scaled
 const FAR = 1e4;               // the deepest distance kept (scene units)
 const MEAN = [0.485, 0.456, 0.406];
@@ -33,18 +36,20 @@ void main() {
 const OCCLUDER_FS = `
 uniform sampler2D depthMap;   // distance, 24-bit in rgb (of FAR); a = 0 where unknown
 uniform float far;
-uniform float margin;
+uniform float nearer;
 uniform vec2 proj;            // the camera's projection matrix, elements 10 and 14
-uniform float show;           // ?debug: tint by nearness
+uniform float focusDepth;     // how far away the sculpture is
+uniform float show;           // ?debug: tint what would hide the sculpture
 varying vec2 vUv;
 void main() {
   vec4 t = texture2D(depthMap, vec2(vUv.x, 1.0 - vUv.y));
   float z = far * dot(floor(t.rgb * 255.0 + 0.5), vec3(65536.0, 256.0, 1.0)) / 16777215.0;
   float depth = 1.0;
-  if (t.a > 0.5 && z > 0.0) depth = clamp((-proj.x + proj.y / (z * (1.0 + margin))) * 0.5 + 0.5, 0.0, 1.0);
+  // written as if NEARER times further away, so only things clearly in front win the depth test
+  if (t.a > 0.5 && z > 0.0) depth = clamp((-proj.x + proj.y / (z / nearer)) * 0.5 + 0.5, 0.0, 1.0);
   gl_FragDepthEXT = depth;
-  float near = t.a > 0.5 ? clamp(1.0 - z / 25.0, 0.0, 1.0) : 0.0;
-  gl_FragColor = vec4(vec3(1.0, 0.25, 0.1) * near * show, 1.0);
+  float hides = t.a > 0.5 && z / nearer < focusDepth ? 1.0 : 0.0;
+  gl_FragColor = vec4(vec3(1.0, 0.25, 0.1) * hides * show, 1.0);
 }`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -111,7 +116,8 @@ export function createOcclusion({ debug = false } = {}) {
       rect: { value: new THREE.Vector4() },
       depthMap: { value: texture },
       far: { value: FAR },
-      margin: { value: MARGIN },
+      nearer: { value: NEARER },
+      focusDepth: { value: 0 },
       proj: { value: new THREE.Vector2() },
       show: { value: debug ? 0.6 : 0 },
     },
@@ -246,6 +252,7 @@ export function createOcclusion({ debug = false } = {}) {
     }
     texture.needsUpdate = true;
     Object.assign(square, sq);
+    material.uniforms.focusDepth.value = -target.clone().applyMatrix4(camera.matrixWorldInverse).z;
     material.uniforms.rect.value.set(
       ((sq.x0 + sq.side / 2) / sq.cw) * 2 - 1, 1 - ((sq.y0 + sq.side / 2) / sq.ch) * 2,
       sq.side / sq.cw, sq.side / sq.ch,
@@ -311,7 +318,7 @@ export function createOcclusion({ debug = false } = {}) {
       const u = (((_p.x * 0.5 + 0.5) * square.cw - square.x0) / square.side) * SIZE;
       const v = (((0.5 - _p.y * 0.5) * square.ch - square.y0) / square.side) * SIZE;
       if (u < 0 || v < 0 || u > SIZE - 1 || v > SIZE - 1) return false;
-      return zmap[(v | 0) * SIZE + (u | 0)] * (1 + MARGIN) < z;
+      return zmap[(v | 0) * SIZE + (u | 0)] / NEARER < z;
     },
   };
 }

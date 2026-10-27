@@ -29,11 +29,11 @@ camera sees, the sculpture lands in the same place.
 Once the sculpture is placed, real things that come in front of it hide it: people, pillars,
 the railing. A few times a second a depth model guesses how near each part of the camera view
 is, and the points the AR engine has tracked in the room turn that guess into distances; what
-is nearer than the sculpture is drawn over it (`occlusion.js`). It needs the model to load
-(about 45 MB the first time, after the camera starts) and enough tracked points in view, so it
-starts a little after the sculpture appears; until then, and on phones where it can't run, the
-sculpture simply shows as before. Add `?debug` to the address to see what it takes as near,
-tinted red.
+is clearly nearer than the sculpture (at most 60% as far away) is drawn over it
+(`occlusion.js`). It needs the model to load (about 45 MB the first time, after the camera
+starts) and enough tracked points in view, so it starts a little after the sculpture appears;
+until then, and on phones where it can't run, the sculpture simply shows as before. Add
+`?debug` to the address to see, tinted red, what would hide the sculpture.
 
 ## What's here
 
