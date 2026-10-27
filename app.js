@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { loadPiece, createEnvironment, PHOTO, VIEWS } from './piece.js';
+import { createOcclusion } from './occlusion.js';
 
 // 8th Wall's three.js module looks for a global THREE.
 window.THREE = THREE;
@@ -281,6 +282,16 @@ ui.xrCanvas.addEventListener('pointerup', (e) => {
 const shade = window.Shade.pipelineModule();
 shade.onError = (e) => showError('The shade could not start: ' + e.message);
 const clockStart = performance.now();
+// real things in front of the sculpture hide it (?debug tints them red by nearness)
+const occlusion = createOcclusion({ debug: DEBUG });
+
+// the sculpture's centre in the world while it's placed: occlusion.js looks round it
+const _focus = new THREE.Vector3();
+function sculptureInWorld() {
+  if (!anchor.placed || !state.piece) return null;
+  anchor.group.updateMatrixWorld();
+  return _focus.copy(state.piece.spot).applyMatrix4(anchor.group.matrixWorld);
+}
 
 const arModule = {
   name: 'simorgh',
@@ -302,10 +313,11 @@ const arModule = {
     triesLeft = PLACE_TRIES;
     if (!anchor.group.children.length) anchor.group.add(state.piece.root);
     scene.add(anchor.group);
+    occlusion.start({ scene, camera, canvas: ui.xrCanvas, focus: sculptureInWorld });
     window.__xr = { scene, camera, renderer, anchor };
   },
   onUpdate: () => {
-    if (state.piece) state.piece.update((performance.now() - clockStart) / 1000, shade.light);
+    if (state.piece) state.piece.update((performance.now() - clockStart) / 1000, shade.light, occlusion.hides);
   },
   onCameraStatusChange: ({ status }) => {
     if (DEBUG) (window.__ev ||= []).push(['camera', status]);
@@ -355,6 +367,7 @@ function startAR() {
   XR8.XrController.configure({
     imageTargetData: state.targets,
     disableWorldTracking: !state.worldTracking,
+    enableWorldPoints: state.worldTracking,   // the tracked points occlusion.js scales its depth guess by
   });
   XR8.clearCameraPipelineModules();
   XR8.addCameraPipelineModules([
@@ -363,6 +376,7 @@ function startAR() {
     shade,                                               // the Turrell shade over it, flickering
     XR8.Threejs.pipelineModule(),                        // the Simorgh and the beams, drawn over both
     XR8.XrController.pipelineModule(),                   // world tracking + the image target
+    occlusion.pipelineModule(),                          // the camera picture and tracked points, for hiding
     arModule,
   ]);
   state.running = true;
@@ -378,6 +392,7 @@ function stopAR() {
     try { XR8.stop(); } catch { /* already stopped */ }
     try { XR8.clearCameraPipelineModules(); } catch { /* ignore */ }
   }
+  occlusion.stop();
   clearTimeout(findTimer);
   anchor.placed = false;
   anchor.byHand = false;
