@@ -52,7 +52,7 @@ export const VIEWS = VIEW_SHOTS.map((v) => {
 const MODEL_URL = new URL('model/simorgh.glb', import.meta.url).href;
 const GAP = [308, 409];          // facing edges of the two inner pillars
 const MODEL_Y = 530;             // the sculpture's centre
-const FILL = 0.92;               // share of the gap the sculpture's width takes
+const FILL = 0.92 * 1.3;         // share of the gap the sculpture's width takes (30% larger than a 0.92 fit)
 
 const SOURCE = [359, 150];       // the light, on the ceiling right above the sculpture
 const BEAM_ANGLE = 13;           // the beam's half-angle, degrees
