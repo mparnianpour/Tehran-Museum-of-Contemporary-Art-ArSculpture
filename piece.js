@@ -28,7 +28,7 @@ const at = (x, y, z = 0) => new THREE.Vector3((x - W / 2) / W, (CROP_TOP + CROP_
 // ---------------------------------------------------------------------------
 const MODEL_URL = new URL('model/simorgh.glb', import.meta.url).href;
 const SPOT = [488, 905];         // the sculpture's centre: the middle of the circle marked on the photo
-const SCULPTURE_HEIGHT = 600;    // its height, nine tenths of the circle's
+const SCULPTURE_HEIGHT = 900;    // its height: half as big again as nine tenths of the circle's
 
 const SOURCE = [488, 130];       // the light, on the ceiling right above the sculpture
 const BEAM_ANGLE = 16;           // the beam's half-angle, degrees

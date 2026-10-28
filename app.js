@@ -11,6 +11,7 @@ const FOLLOW_ALPHA = 0.25;        // smoothing of later sightings of the photo
 const FIND_WAIT = 4000;           // ms without finding the photo before offering to place by hand
 const PLACE_DISTANCE = 12;        // the furthest a hand-placed scene stands (world units, about metres)
 const PLACE_MIN = 0.8;            // ...and the nearest
+const TAP_SIZE = 0.4;             // a tapped scene's size, as a share of the photo spanning the view
 const PLACE_TRIES = 3;            // taps a visitor gets to place the sculpture by hand
 
 const PARAMS = new URLSearchParams(location.search);
@@ -175,9 +176,9 @@ function onImagePose(detail, camera) {
 // Placing by hand, for the real atrium. The photo is matched as a flat picture, so in the
 // building itself it is only found from about the spot it was taken. Instead: frame the
 // view like the photo and tap where the sculpture goes. The scene stands there, upright and
-// facing you, as wide as the view, as far away as what you tapped on (up to PLACE_DISTANCE: in
-// a smaller room it stands in the room, not behind its walls), and world tracking keeps it in
-// the room as you move.
+// facing you, TAP_SIZE as wide as the view, as far away as what you tapped on (up to
+// PLACE_DISTANCE: in a smaller room it stands in the room, not behind its walls), and world
+// tracking keeps it in the room as you move.
 // A visitor gets PLACE_TRIES taps; after the last one the sculpture stays where it is.
 // ---------------------------------------------------------------------------
 const TRIES = SETUP ? Infinity : PLACE_TRIES;   // setting up, as many as it takes
@@ -231,7 +232,7 @@ function placeByHand(clientX, clientY) {
   _x.crossVectors(_y, _z).normalize();
   _y.crossVectors(_z, _x);
   anchor.quat.setFromRotationMatrix(_basis.makeBasis(_x, _y, _z));
-  anchor.scale = (2 * distance) / camera.projectionMatrix.elements[0];   // the photo spans the view
+  anchor.scale = (TAP_SIZE * 2 * distance) / camera.projectionMatrix.elements[0];   // a share of the photo spanning the view
   // the sculpture's spot lands where you tapped
   anchor.pos.copy(tap).sub(state.piece.spot.clone().applyQuaternion(anchor.quat).multiplyScalar(anchor.scale));
   anchor.placed = true;
