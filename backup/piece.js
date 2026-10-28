@@ -518,21 +518,25 @@ export async function loadPiece({ onProgress } = {}) {
   root.add(halo);
 
   const toCam = new THREE.Vector3();
+  const world = new THREE.Vector3();
   return {
     root,
     spot,   // the sculpture's centre, in image space
 
-    // time in seconds; light = the room's light this frame (1 = steady), from the shade's flicker
-    update(time, light) {
+    // time in seconds; light = the room's light this frame (1 = steady), from the shade's flicker;
+    // hidden(point) = whether a person stands in front of a world point (occlusion.js)
+    update(time, light, hidden) {
       wallLight.material.uniforms.time.value = time;
       dust.material.uniforms.time.value = time;
       for (const m of materials) m.envMapIntensity = ENV_INTENSITY * light;
-      // a glint shows when the phone is in line with its reflection, and twinkles
+      // a glint shows when the phone is in line with its reflection, and twinkles; glints are
+      // drawn over everything, so one behind a person is turned off here
       for (const g of glints) {
         toCam.copy(silver.coneCam.value).sub(g.sprite.position).normalize();
         const aligned = Math.pow(Math.max(toCam.dot(g.dir), 0), 6);
         const twinkle = 0.35 + 0.65 * Math.pow(0.5 + 0.5 * Math.sin(time * 2.1 + g.phase), 3);
-        const k = aligned * twinkle;
+        const behind = hidden && aligned > 0.01 && hidden(world.copy(g.sprite.position).applyMatrix4(root.matrixWorld));
+        const k = behind ? 0 : aligned * twinkle;
         g.sprite.material.opacity = k;
         g.sprite.scale.setScalar((GLINT_SIZE / W) * (0.5 + 0.5 * k));
         g.sprite.material.rotation = time * 0.3 + g.phase;

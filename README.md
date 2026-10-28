@@ -8,7 +8,7 @@ around it dims to a deep blue and its light flickers.
 **Live:** https://mparnianpour.github.io/Tehran-Museum-of-Contemporary-Art-ArSculpture/
 
 **Previous version (backup):** https://mparnianpour.github.io/Tehran-Museum-of-Contemporary-Art-ArSculpture/backup/
-(the piece as it was before real things could hide it, commit `539ccb9`)
+(the piece as it was before the depth tracker came back: hiding behind people only, commit `c9c299e`)
 
 ## Using it
 

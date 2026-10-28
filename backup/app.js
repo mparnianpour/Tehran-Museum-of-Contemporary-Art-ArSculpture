@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import { loadPiece, createEnvironment, PHOTO, VIEWS } from './piece.js';
+import { createOcclusion } from './occlusion.js';
 
 // 8th Wall's three.js module looks for a global THREE.
 window.THREE = THREE;
 
 const FOLLOW_ALPHA = 0.25;        // smoothing of later sightings of the photo
 const FIND_WAIT = 4000;           // ms without finding the photo before offering to place by hand
-const PLACE_DISTANCE = 12;        // how far away a hand-placed scene stands (world units, about metres)
+const PLACE_DISTANCE = 12;        // the furthest a hand-placed scene stands (world units, about metres)
+const PLACE_MIN = 0.8;            // ...and the nearest
 const PLACE_TRIES = 3;            // taps a visitor gets to place the sculpture between the pillars
 
 // Where people walk through the view, marked on the photo: the ceiling light and cross beam, and
@@ -220,7 +222,9 @@ function onImagePose(detail, camera) {
 // Placing by hand, for the real atrium. The photo is matched as a flat picture, so in the
 // building itself it is only found from the exact spot it was taken. Instead: frame the
 // pillars like the photo and tap between them. The scene stands there, upright and facing
-// you, as wide as the view, and world tracking keeps it in the room as you move.
+// you, as wide as the view, as far away as what you tapped on (up to PLACE_DISTANCE: in a
+// smaller room it stands in the room, not behind its walls), and world tracking keeps it in
+// the room as you move.
 // A visitor gets PLACE_TRIES taps; after the last one the sculpture stays where it is.
 // ---------------------------------------------------------------------------
 let triesLeft = PLACE_TRIES;
@@ -233,6 +237,20 @@ const _z = new THREE.Vector3();
 const _look = new THREE.Vector3();
 const _basis = new THREE.Matrix4();
 
+// How far ahead the tapped spot is, measured level: from a point the AR engine tracks there;
+// PLACE_DISTANCE when it has none. Needs _ray and _z set.
+function tappedDistance(clientX, clientY, rect) {
+  let point = null;
+  try {
+    const x = (clientX - rect.left) / rect.width;
+    const y = (clientY - rect.top) / rect.height;
+    const hit = (XR8.XrController.hitTest(x, y, ['FEATURE_POINT']) || [])[0];
+    if (hit) point = new THREE.Vector3(hit.position.x, hit.position.y, hit.position.z);
+  } catch { /* no hit test here: the default */ }
+  const ahead = point ? point.sub(_ray.ray.origin).dot(_z) : PLACE_DISTANCE;
+  return THREE.MathUtils.clamp(ahead, PLACE_MIN, PLACE_DISTANCE);
+}
+
 function placeByHand(clientX, clientY) {
   if (!state.running || !state.piece || triesLeft <= 0) return;
   const { camera } = XR8.Threejs.xrScene();
@@ -240,7 +258,7 @@ function placeByHand(clientX, clientY) {
   _ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, 1 - ((clientY - rect.top) / rect.height) * 2);
   camera.updateMatrixWorld();
   _ray.setFromCamera(_ndc, camera);
-  // the scene's plane: PLACE_DISTANCE ahead of the camera, facing back at it, upright
+  // the scene's plane: as far ahead as the tapped spot, facing back at the camera, upright
   // (unless the phone is tipped more than 60° up or down: then square to the view)
   camera.getWorldDirection(_look);
   _z.copy(_look).setY(0);
@@ -249,12 +267,13 @@ function placeByHand(clientX, clientY) {
   _z.normalize();
   const ahead = _ray.ray.direction.dot(_z);
   if (ahead < 0.1) return;
-  const tap = _ray.ray.origin.clone().addScaledVector(_ray.ray.direction, PLACE_DISTANCE / ahead);
+  const distance = tappedDistance(clientX, clientY, rect);
+  const tap = _ray.ray.origin.clone().addScaledVector(_ray.ray.direction, distance / ahead);
   _z.negate();
   _x.crossVectors(_y, _z).normalize();
   _y.crossVectors(_z, _x);
   anchor.quat.setFromRotationMatrix(_basis.makeBasis(_x, _y, _z));
-  anchor.scale = (2 * PLACE_DISTANCE) / camera.projectionMatrix.elements[0];   // the photo spans the view
+  anchor.scale = (2 * distance) / camera.projectionMatrix.elements[0];   // the photo spans the view
   // the sculpture's spot lands where you tapped
   anchor.pos.copy(tap).sub(state.piece.spot.clone().applyQuaternion(anchor.quat).multiplyScalar(anchor.scale));
   anchor.placed = true;
@@ -281,6 +300,10 @@ ui.xrCanvas.addEventListener('pointerup', (e) => {
 const shade = window.Shade.pipelineModule();
 shade.onError = (e) => showError('The shade could not start: ' + e.message);
 const clockStart = performance.now();
+// people in front of the sculpture hide it (?debug shows them magenta)
+const occlusion = createOcclusion({ debug: DEBUG });
+// what occlusion.js keeps clear of people: the piece, once it's placed
+const placedPiece = () => (anchor.placed && state.piece ? state.piece.root : null);
 
 const arModule = {
   name: 'simorgh',
@@ -302,10 +325,11 @@ const arModule = {
     triesLeft = PLACE_TRIES;
     if (!anchor.group.children.length) anchor.group.add(state.piece.root);
     scene.add(anchor.group);
+    occlusion.start({ scene, camera, canvas: ui.xrCanvas, target: placedPiece });
     window.__xr = { scene, camera, renderer, anchor };
   },
   onUpdate: () => {
-    if (state.piece) state.piece.update((performance.now() - clockStart) / 1000, shade.light);
+    if (state.piece) state.piece.update((performance.now() - clockStart) / 1000, shade.light, occlusion.hides);
   },
   onCameraStatusChange: ({ status }) => {
     if (DEBUG) (window.__ev ||= []).push(['camera', status]);
@@ -363,6 +387,7 @@ function startAR() {
     shade,                                               // the Turrell shade over it, flickering
     XR8.Threejs.pipelineModule(),                        // the Simorgh and the beams, drawn over both
     XR8.XrController.pipelineModule(),                   // world tracking + the image target
+    occlusion.pipelineModule(),                          // people in front of the sculpture hide it
     arModule,
   ]);
   state.running = true;
@@ -378,6 +403,7 @@ function stopAR() {
     try { XR8.stop(); } catch { /* already stopped */ }
     try { XR8.clearCameraPipelineModules(); } catch { /* ignore */ }
   }
+  occlusion.stop();
   clearTimeout(findTimer);
   anchor.placed = false;
   anchor.byHand = false;
