@@ -7,7 +7,8 @@ window.THREE = THREE;
 
 const FOLLOW_ALPHA = 0.25;        // smoothing of later sightings of the photo
 const FIND_WAIT = 4000;           // ms without finding the photo before offering to place by hand
-const PLACE_DISTANCE = 12;        // how far away a hand-placed scene stands (world units, about metres)
+const PLACE_DISTANCE = 12;        // the furthest a hand-placed scene stands (world units, about metres)
+const PLACE_MIN = 0.8;            // ...and the nearest
 const PLACE_TRIES = 3;            // taps a visitor gets to place the sculpture between the pillars
 
 // Where people walk through the view, marked on the photo: the ceiling light and cross beam, and
@@ -221,7 +222,9 @@ function onImagePose(detail, camera) {
 // Placing by hand, for the real atrium. The photo is matched as a flat picture, so in the
 // building itself it is only found from the exact spot it was taken. Instead: frame the
 // pillars like the photo and tap between them. The scene stands there, upright and facing
-// you, as wide as the view, and world tracking keeps it in the room as you move.
+// you, as wide as the view, as far away as what you tapped on (up to PLACE_DISTANCE: in a
+// smaller room it stands in the room, not behind its walls), and world tracking keeps it in
+// the room as you move.
 // A visitor gets PLACE_TRIES taps; after the last one the sculpture stays where it is.
 // ---------------------------------------------------------------------------
 let triesLeft = PLACE_TRIES;
@@ -234,6 +237,24 @@ const _z = new THREE.Vector3();
 const _look = new THREE.Vector3();
 const _basis = new THREE.Matrix4();
 
+// How far ahead the tapped spot is, measured level: from occlusion.js's depth guess, or else a
+// point the AR engine tracks there; PLACE_DISTANCE when neither knows. Needs _ray and _z set.
+function tappedDistance(clientX, clientY, rect) {
+  let point = null;
+  const z = occlusion.depthAt(clientX, clientY);   // along the view
+  if (z) point = _ray.ray.origin.clone().addScaledVector(_ray.ray.direction, z / _ray.ray.direction.dot(_look));
+  if (!point) {
+    try {
+      const x = (clientX - rect.left) / rect.width;
+      const y = (clientY - rect.top) / rect.height;
+      const hit = (XR8.XrController.hitTest(x, y, ['FEATURE_POINT']) || [])[0];
+      if (hit) point = new THREE.Vector3(hit.position.x, hit.position.y, hit.position.z);
+    } catch { /* no hit test here: the default */ }
+  }
+  const ahead = point ? point.sub(_ray.ray.origin).dot(_z) : PLACE_DISTANCE;
+  return THREE.MathUtils.clamp(ahead, PLACE_MIN, PLACE_DISTANCE);
+}
+
 function placeByHand(clientX, clientY) {
   if (!state.running || !state.piece || triesLeft <= 0) return;
   const { camera } = XR8.Threejs.xrScene();
@@ -241,7 +262,7 @@ function placeByHand(clientX, clientY) {
   _ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, 1 - ((clientY - rect.top) / rect.height) * 2);
   camera.updateMatrixWorld();
   _ray.setFromCamera(_ndc, camera);
-  // the scene's plane: PLACE_DISTANCE ahead of the camera, facing back at it, upright
+  // the scene's plane: as far ahead as the tapped spot, facing back at the camera, upright
   // (unless the phone is tipped more than 60° up or down: then square to the view)
   camera.getWorldDirection(_look);
   _z.copy(_look).setY(0);
@@ -250,12 +271,13 @@ function placeByHand(clientX, clientY) {
   _z.normalize();
   const ahead = _ray.ray.direction.dot(_z);
   if (ahead < 0.1) return;
-  const tap = _ray.ray.origin.clone().addScaledVector(_ray.ray.direction, PLACE_DISTANCE / ahead);
+  const distance = tappedDistance(clientX, clientY, rect);
+  const tap = _ray.ray.origin.clone().addScaledVector(_ray.ray.direction, distance / ahead);
   _z.negate();
   _x.crossVectors(_y, _z).normalize();
   _y.crossVectors(_z, _x);
   anchor.quat.setFromRotationMatrix(_basis.makeBasis(_x, _y, _z));
-  anchor.scale = (2 * PLACE_DISTANCE) / camera.projectionMatrix.elements[0];   // the photo spans the view
+  anchor.scale = (2 * distance) / camera.projectionMatrix.elements[0];   // the photo spans the view
   // the sculpture's spot lands where you tapped
   anchor.pos.copy(tap).sub(state.piece.spot.clone().applyQuaternion(anchor.quat).multiplyScalar(anchor.scale));
   anchor.placed = true;

@@ -2,9 +2,10 @@
 // Real things in front of the sculpture hide it: people, pillars, the railing. A few times a
 // second a depth model (Depth Anything V2 Small) guesses how near each part of the camera view
 // is. That guess only says what is nearer than what, so the AR engine's tracked points (spots
-// in the room it has measured) turn it into distances in the scene's own units. A pass drawn
-// before everything else writes those distances into the depth buffer, so whatever is nearer
-// than the sculpture, its light or its dust is drawn over them.
+// in the room it has measured) turn it into distances in the scene's own units. Where something
+// stands clearly in front of the sculpture, a softened mask drawn before everything else fills
+// the depth buffer, so the sculpture, its light and its dust aren't drawn there.
+// The same distances tell app.js how far away the spot is that a visitor taps on.
 // Until the model has loaded and enough tracked points are in view, nothing is hidden.
 
 import * as THREE from 'three';
@@ -34,22 +35,14 @@ void main() {
 }`;
 
 const OCCLUDER_FS = `
-uniform sampler2D depthMap;   // distance, 24-bit in rgb (of FAR); a = 0 where unknown
-uniform float far;
-uniform float nearer;
-uniform vec2 proj;            // the camera's projection matrix, elements 10 and 14
-uniform float focusDepth;     // how far away the sculpture is
-uniform float show;           // ?debug: tint what would hide the sculpture
+uniform sampler2D mask;   // 1 where something real stands clearly in front of the sculpture, softened
+uniform float show;       // ?debug: tint it
 varying vec2 vUv;
 void main() {
-  vec4 t = texture2D(depthMap, vec2(vUv.x, 1.0 - vUv.y));
-  float z = far * dot(floor(t.rgb * 255.0 + 0.5), vec3(65536.0, 256.0, 1.0)) / 16777215.0;
-  float depth = 1.0;
-  // written as if NEARER times further away, so only things clearly in front win the depth test
-  if (t.a > 0.5 && z > 0.0) depth = clamp((-proj.x + proj.y / (z / nearer)) * 0.5 + 0.5, 0.0, 1.0);
-  gl_FragDepthEXT = depth;
-  float hides = t.a > 0.5 && z / nearer < focusDepth ? 1.0 : 0.0;
-  gl_FragColor = vec4(vec3(1.0, 0.25, 0.1) * hides * show, 1.0);
+  float m = texture2D(mask, vec2(vUv.x, 1.0 - vUv.y)).r;
+  // in front: the nearest depth, so nothing virtual is drawn there (it all hangs about as far as the sculpture)
+  gl_FragDepthEXT = m > 0.5 ? 0.0 : 1.0;
+  gl_FragColor = vec4(vec3(1.0, 0.25, 0.1) * smoothstep(0.35, 0.65, m) * show, 1.0);
 }`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -100,25 +93,25 @@ export function createOcclusion({ debug = false } = {}) {
   let canvas = null;
   let focus = null;
 
-  // the guess currently drawn: distances on the model's square, and where the square is on screen
+  // the latest guess: distances on the model's square, where the square is on screen, and the mask
+  // drawn from them (blurred, then cut at a half, which rounds its edges instead of leaving blocks)
   const zmap = new Float32Array(SIZE * SIZE);
+  const hard = new Float32Array(SIZE * SIZE);
+  const soft = new Float32Array(SIZE * SIZE);
   const pixels = new Uint8Array(SIZE * SIZE * 4);
   const texture = new THREE.DataTexture(pixels, SIZE, SIZE, THREE.RGBAFormat, THREE.UnsignedByteType);
-  texture.magFilter = texture.minFilter = THREE.NearestFilter;
+  texture.magFilter = texture.minFilter = THREE.LinearFilter;
   texture.generateMipmaps = false;
   const square = { x0: 0, y0: 0, side: 1, cw: 1, ch: 1 };
   let shownAt = 0;
+  let mapAt = -Infinity;
 
   const material = new THREE.ShaderMaterial({
     vertexShader: OCCLUDER_VS,
     fragmentShader: OCCLUDER_FS,
     uniforms: {
       rect: { value: new THREE.Vector4() },
-      depthMap: { value: texture },
-      far: { value: FAR },
-      nearer: { value: NEARER },
-      focusDepth: { value: 0 },
-      proj: { value: new THREE.Vector2() },
+      mask: { value: texture },
       show: { value: debug ? 0.6 : 0 },
     },
     depthTest: true,
@@ -132,9 +125,6 @@ export function createOcclusion({ debug = false } = {}) {
   mesh.frustumCulled = false;
   mesh.renderOrder = -100;   // before everything it hides
   mesh.visible = false;
-  mesh.onBeforeRender = (r, s, cam) => {
-    material.uniforms.proj.value.set(cam.projectionMatrix.elements[10], cam.projectionMatrix.elements[14]);
-  };
 
   const input = document.createElement('canvas');
   input.width = input.height = SIZE;
@@ -164,11 +154,12 @@ export function createOcclusion({ debug = false } = {}) {
     }
   }
 
-  // The square of the view the model looks at, centred on the sculpture, in canvas pixels.
+  // The square of the view the model looks at, in canvas pixels: centred on the sculpture, or on
+  // the middle of the screen before it's placed (where a visitor taps to place it).
   function placeSquare(target) {
     const cw = canvas.clientWidth;
     const ch = canvas.clientHeight;
-    const p = target.clone().project(camera);
+    const p = target ? target.clone().project(camera) : new THREE.Vector3();
     if (p.z > 1 || Math.abs(p.x) > 1.6 || Math.abs(p.y) > 1.6) return null;   // well off screen
     const side = Math.min(ch, cw * SQUARE);
     let cx = (p.x * 0.5 + 0.5) * cw;
@@ -203,10 +194,31 @@ export function createOcclusion({ debug = false } = {}) {
     return (d[i] * (1 - fx) + d[i + 1] * fx) * (1 - fy) + (d[i + SIZE] * (1 - fx) + d[i + SIZE + 1] * fx) * fy;
   }
 
+  // box blur, 2 pixels each way, of src into dst
+  function blur(src, dst) {
+    const R = 2;
+    for (let y = 0; y < SIZE; y++) {
+      for (let x = 0; x < SIZE; x++) {
+        let sum = 0, n = 0;
+        for (let k = Math.max(0, x - R); k <= Math.min(SIZE - 1, x + R); k++) { sum += src[y * SIZE + k]; n++; }
+        dst[y * SIZE + x] = sum / n;
+      }
+    }
+    const col = new Float32Array(SIZE);
+    for (let x = 0; x < SIZE; x++) {
+      for (let y = 0; y < SIZE; y++) col[y] = dst[y * SIZE + x];
+      for (let y = 0; y < SIZE; y++) {
+        let sum = 0, n = 0;
+        for (let k = Math.max(0, y - R); k <= Math.min(SIZE - 1, y + R); k++) { sum += col[k]; n++; }
+        dst[y * SIZE + x] = sum / n;
+      }
+    }
+  }
+
   async function step() {
     if (!session || !video || (video.readyState !== undefined && video.readyState < 2)) return;
     const target = focus && focus();
-    const sq = target && placeSquare(target);
+    const sq = placeSquare(target);
     if (!sq) { if (performance.now() - shownAt > STALE) mesh.visible = false; return; }
     // tracked points in the square, as [u, v, 1/distance]; too few and the guess can't be scaled,
     // so the model isn't run at all
@@ -242,17 +254,22 @@ export function createOcclusion({ debug = false } = {}) {
 
     for (let i = 0; i < SIZE * SIZE; i++) {
       const g = d[i] - fit.b;
-      const z = g > 1e-6 ? Math.min(fit.a / g, FAR) : FAR;
-      zmap[i] = z;
-      const q = Math.round((z / FAR) * 16777215);
-      pixels[i * 4] = (q >> 16) & 255;
-      pixels[i * 4 + 1] = (q >> 8) & 255;
-      pixels[i * 4 + 2] = q & 255;
-      pixels[i * 4 + 3] = z < FAR ? 255 : 0;
+      zmap[i] = g > 1e-6 ? Math.min(fit.a / g, FAR) : FAR;   // unknown counts as far: it hides nothing
+    }
+    Object.assign(square, sq);
+    mapAt = performance.now();
+    if (!target) { mesh.visible = false; return; }   // nothing placed yet: the distances are only for taps
+
+    // the mask: 1 where something stands at most NEARER times as far away as the sculpture
+    const limit = NEARER * -target.clone().applyMatrix4(camera.matrixWorldInverse).z;
+    for (let i = 0; i < SIZE * SIZE; i++) hard[i] = zmap[i] < limit ? 1 : 0;
+    blur(hard, soft);
+    for (let i = 0; i < SIZE * SIZE; i++) {
+      const m = Math.round(soft[i] * 255);
+      pixels[i * 4] = pixels[i * 4 + 1] = pixels[i * 4 + 2] = m;
+      pixels[i * 4 + 3] = 255;
     }
     texture.needsUpdate = true;
-    Object.assign(square, sq);
-    material.uniforms.focusDepth.value = -target.clone().applyMatrix4(camera.matrixWorldInverse).z;
     material.uniforms.rect.value.set(
       ((sq.x0 + sq.side / 2) / sq.cw) * 2 - 1, 1 - ((sq.y0 + sq.side / 2) / sq.ch) * 2,
       sq.side / sq.cw, sq.side / sq.ch,
@@ -306,6 +323,21 @@ export function createOcclusion({ debug = false } = {}) {
       running = false;
       mesh.visible = false;
       points = [];
+    },
+
+    // how far away the real thing under a point of the screen is (scene units), from the latest
+    // guess; null when there's no recent guess there
+    depthAt(clientX, clientY) {
+      if (!canvas || performance.now() - mapAt > STALE) return null;
+      const r = canvas.getBoundingClientRect();
+      const u = Math.round(((clientX - r.left - square.x0) / square.side) * SIZE);
+      const v = Math.round(((clientY - r.top - square.y0) / square.side) * SIZE);
+      if (u < 2 || v < 2 || u > SIZE - 3 || v > SIZE - 3) return null;
+      const near = [];   // the middle of a small patch round the tap: what was tapped, not an edge beside it
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) near.push(zmap[(v + dy) * SIZE + u + dx]);
+      near.sort((a, b) => a - b);
+      const z = near[near.length >> 1];
+      return z < FAR ? z : null;
     },
 
     // whether a real thing stands in front of this point (world space)

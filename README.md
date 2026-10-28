@@ -16,7 +16,8 @@ around it dims to a deep blue and its light flickers.
 2. Point the camera at the photograph, or at the atrium framed like the photograph.
 3. In the atrium itself, if it isn't found after a few seconds: frame the pillars like the
    photograph, then tap the spot between them. You get three tries; the scene stays where the
-   last one put it, and holds there as you move.
+   last one put it, and holds there as you move. It stands as far away as what you tap on (up
+   to 12 m), so tapped anywhere else, say at home, it stands in that room.
 
 People walking along the balconies, or across the ceiling light, don't stop the photograph
 being found: those areas are softened in the image the camera looks for (`PEOPLE` in `app.js`).
