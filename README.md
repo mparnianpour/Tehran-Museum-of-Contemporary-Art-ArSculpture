@@ -56,21 +56,13 @@ faces, and how many of the AR engine's units make a metre. Up is taken from the 
 why the tag has to hang upright. In a test with the tag 3-5 m away the Simorgh landed within
 about 3 cm of the right spot after a few seconds; from 6 m, nearly head-on, within about 20 cm.
 
-Once the sculpture is placed, real things that come between the phone and it hide it:
-- **People**, as in ar-test's people occlusion: several times a second the camera picture round the
-  sculpture goes through a person-segmentation model (MediaPipe's selfie segmenter, in
-  `lib/mediapipe`), and where it finds a person the sculpture, its light and its dust aren't drawn
-  (`occlusion.js`).
-- **Other things clearly in front of it** (the big pillars beside you, the railing), from the depth
-  tracker (`depth.js`): a depth model guesses how near each part of the view is, and the points the
-  AR engine has tracked in the room turn that guess into distances. It hides only what is at most
-  60% as far away as the sculpture, only when the guess and the tracked points agree well, and only
-  where a spot reads as in front in two guesses running, so walls and the ceiling the light falls
-  on don't flicker into it. The same distances tell how far away a tapped spot is.
-
-Both load after the camera starts (about 57 MB the first time) and hide nothing until they're
-ready. Add `?debug` to the address to see what they hide: people in magenta, other things in
-orange.
+Once the sculpture is placed, people who come between the phone and it hide it, as in ar-test's
+people occlusion: several times a second the camera picture round the sculpture goes through a
+person-segmentation model (MediaPipe's selfie segmenter, in `lib/mediapipe`), and where it finds
+a person the sculpture, its light and its dust aren't drawn (`occlusion.js`). It loads after the
+camera starts and hides nothing until it's ready. Add `?debug` to the address to see what it
+hides, in magenta. Walls, pillars and the railing never hide it: the depth tracker that tried to
+was taken out, since it cut dark holes in the light when the photo placed the sculpture far off.
 
 ## What's here
 
@@ -80,15 +72,14 @@ orange.
 | `app.js` | The AR session: places the scene from the tag, the photograph, or where you tap |
 | `piece.js` | The scene: the sculpture, the light and its pattern, dust, glints |
 | `occlusion.js` | People in front of the sculpture hide it |
-| `depth.js` | The depth tracker: other things clearly in front hide it; how far away a tapped spot is |
 | `tag.js`, `tag-worker.js` | The position tag: finds it and works out where it is in the room |
 | `shade.js` | The shade over the camera view (from the Turrell walls work): 55%, deep blue, flickering |
 | `lantern.jpg` | The photograph the camera looks for |
 | `marker/` | The position tag to print (A4 PDF) |
 | `backup/` | The previous version, kept live in case this one misbehaves |
 | `model/simorgh.glb` | The sculpture |
-| `model/depth.onnx` | The depth model: Depth Anything V2 Small, cut to 308×308 and compressed |
-| `lib/` | 8th Wall engine, XRExtras, three.js, MediaPipe person segmentation, ONNX Runtime Web, js-aruco2 |
+| `model/depth.onnx` | The backup's depth model: Depth Anything V2 Small, cut to 308×308 and compressed |
+| `lib/` | 8th Wall engine, XRExtras, three.js, MediaPipe person segmentation, js-aruco2; ONNX Runtime Web (the backup's) |
 
 The look is set by named constants at the top of `piece.js` (the light's source, bell shape,
 warmth, the sculpture's size and height) and `shade.js` (shade, blue cast, flicker).
@@ -98,7 +89,7 @@ warmth, the sculpture's size and height) and `shade.js` (shade, blue cast, flick
 AR engine: 8th Wall © Niantic Spatial, Inc., used under its [engine license](lib/8thwall/LICENSE),
 provided without warranty. [three.js](lib/three/LICENSE) (MIT) and
 [XRExtras](lib/xrextras/LICENSE). Person segmentation: [MediaPipe](lib/mediapipe/README.txt)
-(Apache-2.0). Depth: [Depth Anything V2 Small](model/depth-LICENSE.txt) (Apache-2.0; ONNX export
+(Apache-2.0). Depth, in the backup: [Depth Anything V2 Small](model/depth-LICENSE.txt) (Apache-2.0; ONNX export
 by fabio-sim/Depth-Anything-ONNX, Apache-2.0), run with [ONNX Runtime Web](lib/onnxruntime/LICENSE)
 (MIT). Tag detection: [js-aruco2](lib/js-aruco2/LICENSE.txt) (MIT); the tag is AprilTag 36h11
 (AprilRobotics, BSD 2-Clause).
