@@ -140,10 +140,37 @@ const _fwd = new THREE.Vector3();
 const _normal = new THREE.Vector3();
 let findTimer = 0;
 
+// The photo's plane leans back (it looks up at the beam), and a tap made while looking up does
+// too, but the sculpture hangs straight down: the scene is turned about the sculpture's centre
+// until its up is the world's, facing the way the photo faces.
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const _across = new THREE.Vector3();
+const _facing = new THREE.Vector3();
+const _spotIn = new THREE.Vector3();
+const _upright = new THREE.Matrix4();
+
+function uprightOf(quat, out) {
+  _across.set(1, 0, 0).applyQuaternion(quat).setY(0);
+  if (_across.lengthSq() < 0.1) {
+    // turned on its side: go by which way it faces (its face and its top both lean toward the viewer)
+    _facing.set(0, 0, 1).applyQuaternion(quat).add(_spotIn.set(0, 1, 0).applyQuaternion(quat)).setY(0);
+    _across.crossVectors(WORLD_UP, _facing);
+  }
+  _across.normalize();
+  _facing.crossVectors(_across, WORLD_UP);
+  return out.setFromRotationMatrix(_upright.makeBasis(_across, WORLD_UP, _facing));
+}
+
 function applyAnchor() {
-  anchor.group.position.copy(anchor.pos);
-  anchor.group.quaternion.copy(anchor.quat);
+  uprightOf(anchor.quat, anchor.group.quaternion);
   anchor.group.scale.setScalar(anchor.scale);
+  // the sculpture's centre stays where the photo, the tap or the tag put it
+  anchor.group.position.copy(anchor.pos);
+  if (state.piece) {
+    _spotIn.copy(state.piece.spot).multiplyScalar(anchor.scale);
+    anchor.group.position.add(_facing.copy(_spotIn).applyQuaternion(anchor.quat))
+      .sub(_spotIn.applyQuaternion(anchor.group.quaternion));
+  }
 }
 
 function onImagePose(detail, camera) {
