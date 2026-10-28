@@ -5,9 +5,8 @@
 // segmenter), and wherever a person is found an invisible mask is drawn before the scene, so the
 // sculpture, its light and its dust aren't drawn there and the person shows through.
 //
-// - Only people hide it. Walls, pillars and furniture never do: a guess at their depth from the
-//   camera picture wasn't steady enough (it chopped the light into blocks). Real architecture
-//   would need a 3D scan of the atrium drawn as an invisible occluder, as museum2.glb is in ar-test.
+// - This finds people. Other things clearly in front of the sculpture (the big pillars beside
+//   you, the railing) are left to depth.js, the depth tracker, which only hides when it's sure.
 // - Assumes people are in front of the sculpture, true for visitors on the ramp.
 // - Only the area round the sculpture is analysed, which keeps people big enough for the model to
 //   find them and keeps it fast.

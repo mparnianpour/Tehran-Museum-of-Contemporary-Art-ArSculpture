@@ -17,7 +17,7 @@ const W = 721;
 const H = 1280;
 const CROP_H = Math.round(W / 0.75);
 const CROP_TOP = Math.round((H - CROP_H) / 2);
-export const PHOTO = { src: '../atrium.jpg', width: W, height: H, cropTop: CROP_TOP, cropHeight: CROP_H };
+export const PHOTO = { src: 'atrium.jpg', width: W, height: H, cropTop: CROP_TOP, cropHeight: CROP_H };
 
 // A pixel of the photo -> image space.
 const at = (x, y, z = 0) => new THREE.Vector3((x - W / 2) / W, (CROP_TOP + CROP_H / 2 - y) / W, z);
@@ -30,9 +30,9 @@ const at = (x, y, z = 0) => new THREE.Vector3((x - W / 2) / W, (CROP_TOP + CROP_
 // ---------------------------------------------------------------------------
 const TIE = { light: [362, 315], gap: [306, 410] };
 const VIEW_SHOTS = [
-  { name: 'view-1', src: '../views/view-1.jpg', light: [355, 226], gap: [293, 418] },
-  { name: 'view-2', src: '../views/view-2.jpg', light: [374, 10], gap: [307, 436] },
-  { name: 'view-3', src: '../views/view-3.jpg', light: [358, 154], gap: [299, 413] },
+  { name: 'view-1', src: 'views/view-1.jpg', light: [355, 226], gap: [293, 418] },
+  { name: 'view-2', src: 'views/view-2.jpg', light: [374, 10], gap: [307, 436] },
+  { name: 'view-3', src: 'views/view-3.jpg', light: [358, 154], gap: [299, 413] },
 ];
 const VIEW_W = 720;
 const VIEW_H = 960;

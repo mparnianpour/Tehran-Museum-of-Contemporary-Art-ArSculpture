@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { loadPiece, createEnvironment, PHOTO, VIEWS } from './piece.js';
+import { loadPiece, createEnvironment, PHOTO } from './piece.js';
 import { createOcclusion } from './occlusion.js';
 import { createDepth } from './depth.js';
+import { createTag } from './tag.js';
 
 // 8th Wall's three.js module looks for a global THREE.
 window.THREE = THREE;
@@ -10,27 +11,20 @@ const FOLLOW_ALPHA = 0.25;        // smoothing of later sightings of the photo
 const FIND_WAIT = 4000;           // ms without finding the photo before offering to place by hand
 const PLACE_DISTANCE = 12;        // the furthest a hand-placed scene stands (world units, about metres)
 const PLACE_MIN = 0.8;            // ...and the nearest
-const PLACE_TRIES = 3;            // taps a visitor gets to place the sculpture between the pillars
+const PLACE_TRIES = 3;            // taps a visitor gets to place the sculpture by hand
 
-// Where people walk through the view, marked on the photo: the ceiling light and cross beam, and
-// the three balconies. The target is softened there, so the photo is still found while people
-// move about. Each area is traced row by row as [y, left, right], in photo pixels.
-const PEOPLE = [
-  [[278, 331, 365], [284, 303, 392], [290, 291, 407], [296, 285, 419], [302, 281, 429], [308, 281, 436],
-    [314, 285, 446], [320, 290, 454], [326, 300, 464], [332, 313, 471], [338, 339, 480]],
-  [[617, 215, 424], [623, 190, 554], [629, 176, 576], [635, 167, 591], [641, 163, 599], [647, 159, 600],
-    [653, 156, 602], [659, 155, 603], [665, 154, 606], [671, 154, 607], [677, 155, 608], [683, 161, 611],
-    [689, 170, 609], [695, 361, 488]],
-  [[736, 206, 245], [742, 161, 333], [748, 144, 463], [754, 131, 490], [760, 125, 508], [766, 118, 525],
-    [772, 112, 539], [778, 107, 556], [784, 102, 571], [790, 99, 585], [796, 95, 595], [802, 90, 598],
-    [808, 88, 600], [814, 85, 603], [820, 85, 605], [826, 86, 607], [832, 499, 610], [838, 501, 612],
-    [844, 536, 614], [850, 560, 616], [856, 586, 619], [862, 603, 622]],
-  [[966, 329, 519], [972, 239, 544], [978, 206, 558], [984, 187, 567], [990, 169, 572], [996, 159, 576],
-    [1002, 152, 580], [1008, 146, 583], [1014, 142, 586], [1020, 140, 590], [1026, 142, 595],
-    [1032, 144, 597], [1038, 150, 603]],
-];
-const PEOPLE_MARGIN = 12;         // photo pixels the softening reaches past each marked edge
-const DEBUG = new URLSearchParams(location.search).has('debug');
+const PARAMS = new URLSearchParams(location.search);
+const DEBUG = PARAMS.has('debug');
+const SETUP = PARAMS.has('setup');  // measuring where the scene sits relative to the position tag
+
+// The position tag (marker/, tag.js): where the scene sits relative to it, measured once with
+// ?setup, which shows it as a code: x, y, z (metres), qx, qy, qz, qw, then the size of one photo
+// width (metres). Every phone that sees the tag then puts the scene in that same place, before the
+// photograph or a tap. Until a code is filled in here the tag places nothing, unless this phone
+// saved one in ?setup, or the address carries one (?tag=…, to try a code on any phone).
+const TAG_SCENE = '';
+const TAG_SAVED = 'simorgh-tag-scene';   // localStorage key for a code saved in ?setup
+const TAG_EASE = 0.15;                   // how quickly the scene follows the tag's fit as it firms up
 
 // ---------------------------------------------------------------------------
 // DOM
@@ -41,8 +35,25 @@ const ui = {
   error: $('error'), hint: $('hint'), back: $('back'),
 };
 
+// A code -> { pos, quat, size }, or null if it isn't one.
+function readTagScene(code) {
+  const n = String(code || '').split(',').map(Number);
+  if (n.length !== 8 || !n.every(Number.isFinite) || n[7] <= 0) return null;
+  const quat = new THREE.Quaternion(n[3], n[4], n[5], n[6]);
+  if (quat.lengthSq() < 0.5) return null;
+  return { pos: new THREE.Vector3(n[0], n[1], n[2]), quat: quat.normalize(), size: n[7] };
+}
+const tagSceneCode = ({ pos, quat, size }) => [
+  ...pos.toArray().map((v) => v.toFixed(3)), ...quat.toArray().map((v) => v.toFixed(4)), size.toFixed(4),
+].join(',');
+function savedTagScene() {
+  try { return localStorage.getItem(TAG_SAVED); } catch { return null; }
+}
+const tagScene = readTagScene(PARAMS.get('tag')) || readTagScene(savedTagScene()) || readTagScene(TAG_SCENE);
+const useTag = SETUP || !!tagScene;
+
 const state = {
-  targets: [],        // 8th Wall image target data: atrium.jpg, then the other views
+  targets: [],        // 8th Wall image target data: the photograph
   piece: null,
   xrReady: false,
   running: false,
@@ -80,59 +91,7 @@ const canvas2d = (w, h) => {
   return [c, c.getContext('2d', { willReadFrequently: true })];
 };
 
-// Blur away the detail where people walk (PEOPLE), with soft edges: the detector finds nothing to
-// track there, and no hard edge is left round each area for it to latch onto instead.
-function softenWherePeopleWalk(lum, crop) {
-  const k = lum.width / crop.w;   // target pixels per photo pixel
-  const toTarget = ([x, y]) => [(x - crop.x) * k, (y - crop.y) * k];
-  const [mask, mg] = canvas2d(lum.width, lum.height);
-  mg.fillStyle = '#000';            // opaque, so the soft edges stay in the colour, not the alpha
-  mg.fillRect(0, 0, mask.width, mask.height);
-  mg.fillStyle = mg.strokeStyle = '#fff';
-  mg.lineJoin = 'round';
-  mg.lineWidth = 2 * PEOPLE_MARGIN * k;
-  for (const rows of PEOPLE) {
-    const outline = [...rows.map(([y, l]) => [l, y]), ...rows.slice().reverse().map(([y, , r]) => [r, y])].map(toTarget);
-    mg.beginPath();
-    outline.forEach(([x, y], i) => (i ? mg.lineTo(x, y) : mg.moveTo(x, y)));
-    mg.closePath();
-    mg.fill();
-    mg.stroke();
-  }
-  // soft edges and the blurred picture: halved again and again, then doubled back up the same
-  // way, which blurs smoothly (one big jump would leave soft-edged blocks)
-  const blur = (src, steps) => {
-    const levels = [src];
-    for (let i = 0; i < steps; i++) {
-      const prev = levels[levels.length - 1];
-      const [c, g] = canvas2d(Math.max(1, Math.round(prev.width / 2)), Math.max(1, Math.round(prev.height / 2)));
-      g.imageSmoothingQuality = 'high';
-      g.drawImage(prev, 0, 0, c.width, c.height);
-      levels.push(c);
-    }
-    let up = levels[levels.length - 1];
-    for (let i = levels.length - 2; i >= 0; i--) {
-      const [c, g] = canvas2d(levels[i].width, levels[i].height);
-      g.imageSmoothingQuality = 'high';
-      g.drawImage(up, 0, 0, c.width, c.height);
-      up = c;
-    }
-    return up.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, lum.width, lum.height).data;
-  };
-  const soft = blur(mask, 3);
-  const blurred = blur(lum, 4);
-  const lg = lum.getContext('2d', { willReadFrequently: true });
-  const px = lg.getImageData(0, 0, lum.width, lum.height);
-  for (let i = 0; i < px.data.length; i += 4) {
-    const m = soft[i] / 255;
-    px.data[i] = px.data[i + 1] = px.data[i + 2] = px.data[i] * (1 - m) + blurred[i] * m;
-  }
-  lg.putImageData(px, 0, 0);
-}
-
-// photo: atrium.jpg (PHOTO) or one of the other views; soften: blur where people walk (PEOPLE
-// is traced on atrium.jpg only)
-async function buildTarget(name, photo, soften) {
+async function buildTarget(name, photo) {
   const img = new Image();
   img.src = photo.src;
   await img.decode();
@@ -145,7 +104,6 @@ async function buildTarget(name, photo, soften) {
     px.data[i] = px.data[i + 1] = px.data[i + 2] = y;
   }
   lg.putImageData(px, 0, 0);
-  if (soften) softenWherePeopleWalk(lum, crop);
   const blob = await new Promise((r) => lum.toBlob(r, 'image/jpeg', 0.92));
   if (DEBUG) (window.__targetImages ||= {})[name] = lum.toDataURL('image/png');
   const now = Date.now();
@@ -172,6 +130,7 @@ const anchor = {
   group: new THREE.Group(),
   placed: false,
   byHand: false,
+  byTag: false,
   pos: new THREE.Vector3(),
   quat: new THREE.Quaternion(),
   scale: 1,
@@ -187,18 +146,11 @@ function applyAnchor() {
   anchor.group.scale.setScalar(anchor.scale);
 }
 
-const VIEW_BY_NAME = new Map(VIEWS.map((v) => [v.name, v]));
-
 function onImagePose(detail, camera) {
+  if (anchor.byTag) return;   // the tag knows better
   const pos = new THREE.Vector3(detail.position.x, detail.position.y, detail.position.z);
   const quat = new THREE.Quaternion(detail.rotation.x, detail.rotation.y, detail.rotation.z, detail.rotation.w).normalize();
-  let scale = detail.scale * detail.scaledWidth;   // world size of 1 image width
-  // one of the other views: where atrium.jpg's image space lies, from this one's
-  const view = VIEW_BY_NAME.get(detail.name);
-  if (view) {
-    pos.add(view.toView.offset.clone().applyQuaternion(quat).multiplyScalar(scale));
-    scale *= view.toView.scale;
-  }
+  const scale = detail.scale * detail.scaledWidth;   // world size of 1 image width
   if (!anchor.placed || anchor.byHand) {
     anchor.pos.copy(pos); anchor.quat.copy(quat); anchor.scale = scale;
     anchor.placed = true;
@@ -221,14 +173,15 @@ function onImagePose(detail, camera) {
 
 // ---------------------------------------------------------------------------
 // Placing by hand, for the real atrium. The photo is matched as a flat picture, so in the
-// building itself it is only found from the exact spot it was taken. Instead: frame the
-// pillars like the photo and tap between them. The scene stands there, upright and facing
-// you, as wide as the view, as far away as what you tapped on (up to PLACE_DISTANCE: in a
-// smaller room it stands in the room, not behind its walls), and world tracking keeps it in
+// building itself it is only found from about the spot it was taken. Instead: frame the
+// view like the photo and tap where the sculpture goes. The scene stands there, upright and
+// facing you, as wide as the view, as far away as what you tapped on (up to PLACE_DISTANCE: in
+// a smaller room it stands in the room, not behind its walls), and world tracking keeps it in
 // the room as you move.
 // A visitor gets PLACE_TRIES taps; after the last one the sculpture stays where it is.
 // ---------------------------------------------------------------------------
-let triesLeft = PLACE_TRIES;
+const TRIES = SETUP ? Infinity : PLACE_TRIES;   // setting up, as many as it takes
+let triesLeft = TRIES;
 const UP = new THREE.Vector3(0, 1, 0);
 const _ndc = new THREE.Vector2();
 const _ray = new THREE.Raycaster();
@@ -257,7 +210,7 @@ function tappedDistance(clientX, clientY, rect) {
 }
 
 function placeByHand(clientX, clientY) {
-  if (!state.running || !state.piece || triesLeft <= 0) return;
+  if (!state.running || !state.piece || triesLeft <= 0 || anchor.byTag) return;
   const { camera } = XR8.Threejs.xrScene();
   const rect = ui.xrCanvas.getBoundingClientRect();
   _ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, 1 - ((clientY - rect.top) / rect.height) * 2);
@@ -287,10 +240,119 @@ function placeByHand(clientX, clientY) {
   applyAnchor();
   triesLeft--;
   clearTimeout(findTimer);
-  if (triesLeft > 0) setHint(`Placed. Tap again to move it (${triesLeft} ${triesLeft === 1 ? 'try' : 'tries'} left)`);
+  if (SETUP) setHint('Placed. Tap again to move it');
+  else if (triesLeft > 0) setHint(`Placed. Tap again to move it (${triesLeft} ${triesLeft === 1 ? 'try' : 'tries'} left)`);
   else setHint('Placed');
   findTimer = setTimeout(() => setHint(null), triesLeft > 0 ? 3500 : 2000);
 }
+
+// ---------------------------------------------------------------------------
+// The position tag. Outside ?setup, once a code says where the scene sits relative to the tag,
+// seeing the tag puts it there, the same place in the room on every phone. In ?setup the tag
+// only measures: the photo or a tap places the scene, and the panel shows the code for it.
+// ---------------------------------------------------------------------------
+const tag = createTag();
+let tagVersion = -1;
+const tagTarget = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), scale: 1 };
+
+function placeFromTag() {
+  const t = tag.pose();
+  if (!t || !state.piece) return;
+  if (t.version !== tagVersion) {
+    tagVersion = t.version;
+    tagTarget.pos.copy(tagScene.pos).applyQuaternion(t.quaternion).multiplyScalar(t.scale).add(t.position);
+    tagTarget.quat.copy(t.quaternion).multiply(tagScene.quat);
+    tagTarget.scale = t.scale * tagScene.size;
+    if (!anchor.byTag) {
+      anchor.pos.copy(tagTarget.pos);
+      anchor.quat.copy(tagTarget.quat);
+      anchor.scale = tagTarget.scale;
+      anchor.placed = true;
+      anchor.byTag = true;
+      anchor.byHand = false;
+      anchor.group.visible = true;
+      clearTimeout(findTimer);
+      setHint(null);
+    }
+  }
+  // each sighting firms the fit up: ease into it
+  anchor.pos.lerp(tagTarget.pos, TAG_EASE);
+  anchor.quat.slerp(tagTarget.quat, TAG_EASE);
+  anchor.scale += (tagTarget.scale - anchor.scale) * TAG_EASE;
+  applyAnchor();
+}
+
+// ?setup's panel
+const setupUi = {
+  panel: $('tag-setup'), tag: $('ts-tag'), scale: $('ts-scale'), scene: $('ts-scene'), code: $('ts-code'),
+  copy: $('ts-copy'), link: $('ts-link'), save: $('ts-save'), forget: $('ts-forget'),
+};
+const MOVED_ENOUGH = 0.25;   // m the phone should move while seeing the tag, for distances in metres
+let setupCode = '';
+let setupShown = 0;
+const _rel = new THREE.Vector3();
+const _inv = new THREE.Quaternion();
+
+function showSetup(now) {
+  if (now - setupShown < 250) return;
+  setupShown = now;
+  const t = tag.pose();
+  const info = window.__tag || {};
+  if (!t) {
+    setupUi.tag.textContent = 'Tag: not seen yet. Show it to the camera.';
+    setupUi.scale.textContent = '';
+  } else {
+    const ago = (now - t.seenAt) / 1000;
+    setupUi.tag.textContent = `Tag: seen ${t.sightings}×${ago < 1.5 ? `, ${info.distance} m away` : ', not in view now'}`;
+    setupUi.scale.textContent = t.moved < MOVED_ENOUGH
+      ? `Distances: step about or move the phone side to side with the tag in view (${Math.round(t.moved * 100)} of ${MOVED_ENOUGH * 100} cm)`
+      : 'Distances: measured';
+  }
+  if (!anchor.placed) setupUi.scene.textContent = 'Simorgh: not placed. Point at the view in the photo, or tap where it goes.';
+  else setupUi.scene.textContent = `Simorgh: placed by ${anchor.byHand ? 'your tap (tap again to move it)' : 'the photo'}`;
+
+  setupCode = '';
+  if (t && anchor.placed) {
+    // the scene in the tag's frame, in metres
+    _inv.copy(t.quaternion).invert();
+    _rel.copy(anchor.pos).sub(t.position).applyQuaternion(_inv).divideScalar(t.scale);
+    const scene = { pos: _rel.clone(), quat: _inv.clone().multiply(anchor.quat), size: anchor.scale / t.scale };
+    setupCode = tagSceneCode(scene);
+    const spot = state.piece.spot.clone().applyQuaternion(scene.quat).multiplyScalar(scene.size).add(scene.pos);
+    setupUi.code.textContent = `${setupCode}\nThe Simorgh: ${(scene.size * state.piece.height).toFixed(1)} m tall, `
+      + `${spot.length().toFixed(1)} m from the tag`;
+  } else setupUi.code.textContent = 'The code shows once the tag has been seen and the Simorgh is placed.';
+  for (const b of [setupUi.copy, setupUi.link, setupUi.save]) b.disabled = !setupCode;
+  setupUi.forget.hidden = !savedTagScene();
+}
+
+async function copyText(text, button) {
+  const label = button.textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    button.textContent = 'Copied';
+  } catch {
+    window.prompt('Copy this:', text);
+  }
+  setTimeout(() => { button.textContent = label; }, 1500);
+}
+const testLink = () => `${location.origin}${location.pathname}?tag=${encodeURIComponent(setupCode)}`;
+setupUi.copy.addEventListener('click', () => setupCode && copyText(setupCode, setupUi.copy));
+setupUi.link.addEventListener('click', () => setupCode && copyText(testLink(), setupUi.link));
+setupUi.save.addEventListener('click', () => {
+  if (!setupCode) return;
+  try {
+    localStorage.setItem(TAG_SAVED, setupCode);
+    setupUi.save.textContent = 'Saved on this phone';
+  } catch {
+    setupUi.save.textContent = 'Could not save';
+  }
+  setTimeout(() => { setupUi.save.textContent = 'Save on this phone'; }, 2000);
+});
+setupUi.forget.addEventListener('click', () => {
+  try { localStorage.removeItem(TAG_SAVED); } catch { /* nothing saved */ }
+  setupUi.forget.hidden = true;
+});
 
 let tapFrom = null;
 ui.xrCanvas.addEventListener('pointerdown', (e) => { tapFrom = [e.clientX, e.clientY]; });
@@ -338,23 +400,29 @@ const arModule = {
     anchor.placed = false;
     anchor.byHand = false;
     anchor.group.visible = false;
-    triesLeft = PLACE_TRIES;
+    anchor.byTag = false;
+    tagVersion = -1;
+    triesLeft = TRIES;
     if (!anchor.group.children.length) anchor.group.add(state.piece.root);
     scene.add(anchor.group);
     occlusion.start({ scene, camera, canvas: ui.xrCanvas, target: placedPiece });
     depth.start({ scene, camera, canvas: ui.xrCanvas, focus: sculptureInWorld });
-    window.__xr = { scene, camera, renderer, anchor };
+    if (useTag) tag.start({ camera, canvas: ui.xrCanvas });
+    window.__xr = { scene, camera, renderer, anchor, tag };
   },
   onUpdate: () => {
-    if (state.piece) state.piece.update((performance.now() - clockStart) / 1000, shade.light, hidden);
+    const now = performance.now();
+    if (tagScene && !SETUP) placeFromTag();
+    if (SETUP) showSetup(now);
+    if (state.piece) state.piece.update((now - clockStart) / 1000, shade.light, hidden);
   },
   onCameraStatusChange: ({ status }) => {
     if (DEBUG) (window.__ev ||= []).push(['camera', status]);
     if (status === 'hasVideo' && !anchor.placed) {
-      setHint('Point your camera at the view in the photo');
+      setHint(SETUP ? 'Setup: show the camera the tag, then place the Simorgh' : 'Point your camera at the view in the photo');
       clearTimeout(findTimer);
       findTimer = setTimeout(() => {
-        if (!anchor.placed) setHint(`Not found? Frame the pillars like the photo, then tap between them (${PLACE_TRIES} tries)`);
+        if (!anchor.placed) setHint(`Not found? Frame the view like the photo, then tap where the Simorgh goes${SETUP ? '' : ` (${PLACE_TRIES} tries)`}`);
       }, FIND_WAIT);
     }
     if (status === 'failed' || status === 'denied') {
@@ -389,6 +457,7 @@ function startAR() {
   // Everything below runs inside the tap, so iOS can show its camera and motion prompts.
   ui.setup.hidden = true;
   ui.ar.hidden = false;
+  setupUi.panel.hidden = !SETUP;
   document.body.dataset.state = 'ar';
   setHint('Starting camera…');
   ui.xrCanvas.style.display = 'block';
@@ -407,6 +476,7 @@ function startAR() {
     XR8.XrController.pipelineModule(),                   // world tracking + the image target
     occlusion.pipelineModule(),                          // people in front of the sculpture hide it
     depth.pipelineModule(),                              // ...and other things clearly in front of it
+    ...(useTag ? [tag.pipelineModule()] : []),           // the position tag
     arModule,
   ]);
   state.running = true;
@@ -424,11 +494,13 @@ function stopAR() {
   }
   occlusion.stop();
   depth.stop();
+  tag.stop();
   clearTimeout(findTimer);
   anchor.placed = false;
   anchor.byHand = false;
+  anchor.byTag = false;
   anchor.group.visible = false;
-  triesLeft = PLACE_TRIES;
+  triesLeft = TRIES;
   ui.ar.hidden = true;
   ui.xrCanvas.style.display = 'none';
   ui.setup.hidden = false;
@@ -443,12 +515,8 @@ ui.back.addEventListener('click', stopAR);
 // Boot
 // ---------------------------------------------------------------------------
 refreshStart();
-// atrium.jpg is needed; the other views only help, so one that fails to load is left out
-Promise.all([
-  buildTarget('atrium', PHOTO, true),
-  ...VIEWS.map((v) => buildTarget(v.name, v, false).catch((e) => { console.warn(`${v.src} left out:`, e); return null; })),
-])
-  .then((t) => { state.targets = t.filter(Boolean); refreshStart(); })
+buildTarget('lantern', PHOTO)
+  .then((t) => { state.targets = [t]; refreshStart(); })
   .catch((e) => { console.error(e); showError('The photograph could not be loaded.'); });
 loadPiece({ onProgress: (p) => { state.progress = p; refreshStart(); } })
   .then((p) => { state.piece = p; refreshStart(); })
