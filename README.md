@@ -27,12 +27,21 @@ nearby spots on the ramp (`views/`) help find the atrium from more places. Each 
 `atrium.jpg` by the inner pillars (`TIE` and `VIEW_SHOTS` in `piece.js`), so whichever one the
 camera sees, the sculpture lands in the same place.
 
-Once the sculpture is placed, people who come between the phone and it hide it, as in ar-test's
-people occlusion: several times a second the camera picture round the sculpture goes through a
-person-segmentation model (MediaPipe's selfie segmenter, in `lib/mediapipe`), and where it finds
-a person the sculpture, its light and its dust aren't drawn (`occlusion.js`). Walls, pillars and
-furniture never hide it; real architecture would need a 3D scan of the atrium used as an
-invisible occluder. Add `?debug` to the address to see the people it finds, in magenta.
+Once the sculpture is placed, real things that come between the phone and it hide it:
+- **People**, as in ar-test's people occlusion: several times a second the camera picture round the
+  sculpture goes through a person-segmentation model (MediaPipe's selfie segmenter, in
+  `lib/mediapipe`), and where it finds a person the sculpture, its light and its dust aren't drawn
+  (`occlusion.js`).
+- **Other things clearly in front of it** (the big pillars beside you, the railing), from the depth
+  tracker (`depth.js`): a depth model guesses how near each part of the view is, and the points the
+  AR engine has tracked in the room turn that guess into distances. It hides only what is at most
+  60% as far away as the sculpture, only when the guess and the tracked points agree well, and only
+  where a spot reads as in front in two guesses running, so walls and the ceiling the light falls
+  on don't flicker into it. The same distances tell how far away a tapped spot is.
+
+Both load after the camera starts (about 57 MB the first time) and hide nothing until they're
+ready. Add `?debug` to the address to see what they hide: people in magenta, other things in
+orange.
 
 ## What's here
 
@@ -42,12 +51,14 @@ invisible occluder. Add `?debug` to the address to see the people it finds, in m
 | `app.js` | The AR session: finds the photograph, or places the scene where you tap |
 | `piece.js` | The scene: the sculpture, the light and its pattern, dust, glints |
 | `occlusion.js` | People in front of the sculpture hide it |
+| `depth.js` | The depth tracker: other things clearly in front hide it; how far away a tapped spot is |
 | `shade.js` | The shade over the camera view (from the Turrell walls work): 55%, deep blue, flickering |
 | `atrium.jpg` | The photograph the camera looks for |
 | `views/` | More photos of the atrium from nearby spots, found as well |
 | `backup/` | The previous version, kept live in case this one misbehaves |
 | `model/simorgh.glb` | The sculpture |
-| `lib/` | 8th Wall engine, XRExtras, three.js, MediaPipe person segmentation |
+| `model/depth.onnx` | The depth model: Depth Anything V2 Small, cut to 308×308 and compressed |
+| `lib/` | 8th Wall engine, XRExtras, three.js, MediaPipe person segmentation, ONNX Runtime Web |
 
 The look is set by named constants at the top of `piece.js` (the light's source, bell shape,
 warmth, the sculpture's size and height) and `shade.js` (shade, blue cast, flicker).
@@ -57,4 +68,6 @@ warmth, the sculpture's size and height) and `shade.js` (shade, blue cast, flick
 AR engine: 8th Wall © Niantic Spatial, Inc., used under its [engine license](lib/8thwall/LICENSE),
 provided without warranty. [three.js](lib/three/LICENSE) (MIT) and
 [XRExtras](lib/xrextras/LICENSE). Person segmentation: [MediaPipe](lib/mediapipe/README.txt)
-(Apache-2.0).
+(Apache-2.0). Depth: [Depth Anything V2 Small](model/depth-LICENSE.txt) (Apache-2.0; ONNX export
+by fabio-sim/Depth-Anything-ONNX, Apache-2.0), run with [ONNX Runtime Web](lib/onnxruntime/LICENSE)
+(MIT).
