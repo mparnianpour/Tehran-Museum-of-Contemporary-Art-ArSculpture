@@ -237,20 +237,16 @@ const _z = new THREE.Vector3();
 const _look = new THREE.Vector3();
 const _basis = new THREE.Matrix4();
 
-// How far ahead the tapped spot is, measured level: from occlusion.js's depth guess, or else a
-// point the AR engine tracks there; PLACE_DISTANCE when neither knows. Needs _ray and _z set.
+// How far ahead the tapped spot is, measured level: from a point the AR engine tracks there;
+// PLACE_DISTANCE when it has none. Needs _ray and _z set.
 function tappedDistance(clientX, clientY, rect) {
   let point = null;
-  const z = occlusion.depthAt(clientX, clientY);   // along the view
-  if (z) point = _ray.ray.origin.clone().addScaledVector(_ray.ray.direction, z / _ray.ray.direction.dot(_look));
-  if (!point) {
-    try {
-      const x = (clientX - rect.left) / rect.width;
-      const y = (clientY - rect.top) / rect.height;
-      const hit = (XR8.XrController.hitTest(x, y, ['FEATURE_POINT']) || [])[0];
-      if (hit) point = new THREE.Vector3(hit.position.x, hit.position.y, hit.position.z);
-    } catch { /* no hit test here: the default */ }
-  }
+  try {
+    const x = (clientX - rect.left) / rect.width;
+    const y = (clientY - rect.top) / rect.height;
+    const hit = (XR8.XrController.hitTest(x, y, ['FEATURE_POINT']) || [])[0];
+    if (hit) point = new THREE.Vector3(hit.position.x, hit.position.y, hit.position.z);
+  } catch { /* no hit test here: the default */ }
   const ahead = point ? point.sub(_ray.ray.origin).dot(_z) : PLACE_DISTANCE;
   return THREE.MathUtils.clamp(ahead, PLACE_MIN, PLACE_DISTANCE);
 }
@@ -304,16 +300,10 @@ ui.xrCanvas.addEventListener('pointerup', (e) => {
 const shade = window.Shade.pipelineModule();
 shade.onError = (e) => showError('The shade could not start: ' + e.message);
 const clockStart = performance.now();
-// real things in front of the sculpture hide it (?debug tints them red by nearness)
+// people in front of the sculpture hide it (?debug shows them magenta)
 const occlusion = createOcclusion({ debug: DEBUG });
-
-// the sculpture's centre in the world while it's placed: occlusion.js looks round it
-const _focus = new THREE.Vector3();
-function sculptureInWorld() {
-  if (!anchor.placed || !state.piece) return null;
-  anchor.group.updateMatrixWorld();
-  return _focus.copy(state.piece.spot).applyMatrix4(anchor.group.matrixWorld);
-}
+// what occlusion.js keeps clear of people: the piece, once it's placed
+const placedPiece = () => (anchor.placed && state.piece ? state.piece.root : null);
 
 const arModule = {
   name: 'simorgh',
@@ -335,7 +325,7 @@ const arModule = {
     triesLeft = PLACE_TRIES;
     if (!anchor.group.children.length) anchor.group.add(state.piece.root);
     scene.add(anchor.group);
-    occlusion.start({ scene, camera, canvas: ui.xrCanvas, focus: sculptureInWorld });
+    occlusion.start({ scene, camera, canvas: ui.xrCanvas, target: placedPiece });
     window.__xr = { scene, camera, renderer, anchor };
   },
   onUpdate: () => {
@@ -389,7 +379,6 @@ function startAR() {
   XR8.XrController.configure({
     imageTargetData: state.targets,
     disableWorldTracking: !state.worldTracking,
-    enableWorldPoints: state.worldTracking,   // the tracked points occlusion.js scales its depth guess by
   });
   XR8.clearCameraPipelineModules();
   XR8.addCameraPipelineModules([
@@ -398,7 +387,7 @@ function startAR() {
     shade,                                               // the Turrell shade over it, flickering
     XR8.Threejs.pipelineModule(),                        // the Simorgh and the beams, drawn over both
     XR8.XrController.pipelineModule(),                   // world tracking + the image target
-    occlusion.pipelineModule(),                          // the camera picture and tracked points, for hiding
+    occlusion.pipelineModule(),                          // people in front of the sculpture hide it
     arModule,
   ]);
   state.running = true;
