@@ -42,13 +42,14 @@ Setting it up, once:
    all four corners. Don't move it afterwards.
 3. Open the page with `?setup` added to the address, start the camera, and show it the tag. Walk
    a step or two, or move the phone from side to side, while the tag stays in view, until the
-   panel says **Distances: measured**.
-4. Place the Simorgh where it belongs: point at the view in the photograph, or tap the spot. The
-   panel shows a code (where the Simorgh sits relative to the tag), with its height and distance
-   from the tag as a check.
+   panel says **distances measured**.
+4. Place the Simorgh where it belongs: point at the view in the photograph, or tap the point on
+   the ceiling it hangs from. The panel shows the Simorgh's height and distance from the tag as a
+   check, and a code: where it sits relative to the tag. **Hide** folds the panel away to see
+   the whole scene.
 5. **Copy code** and send it to be built in (`TAG_SCENE` in `app.js`); from then on every phone
-   uses it. Meanwhile, **Save on this phone** uses it on that phone, and **Copy test link** gives
-   an address that tries it on any phone.
+   uses it. Meanwhile, **Save on phone** uses it on that phone, and **Test link** copies an
+   address that tries it on any phone.
 
 How it works (`tag.js`, `tag-worker.js`): several times a second the camera picture is searched
 for the tag, off the main thread, and its corners are found to a fraction of a pixel. All the
