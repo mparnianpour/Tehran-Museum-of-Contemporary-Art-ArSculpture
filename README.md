@@ -16,10 +16,11 @@ pillars, `atrium.jpg` and its three side views, hiding behind people and near th
 
 1. Open the link on a phone (Safari on iPhone, Chrome on Android) and tap **Start camera**.
 2. Point the camera at the position tag, at the photograph, or at the view in the photograph.
-3. In the atrium itself, if neither is found after a few seconds: frame the view like the
-   photograph, then tap where the Simorgh goes. You get three tries; the scene stays where the
-   last one put it, and holds there as you move. It stands as far away as what you tap on (up
-   to 12 m), so tapped anywhere else, say at home, it stands in that room.
+3. In the atrium itself, if neither is found after a few seconds: tap the point on the ceiling
+   the Simorgh hangs from. Its light starts there and it hangs straight down below. You get
+   three tries; the scene stays where the last one put it, and holds there as you move. It
+   hangs as far away as what you tap on (up to 12 m), so tapped anywhere else, say at home, it
+   hangs in that room.
 
 The sculpture's spot and size are traced on the photograph (`SPOT`, `SCULPTURE_HEIGHT` in
 `piece.js`: the middle of the circle marked on it, nine tenths of the circle's height).

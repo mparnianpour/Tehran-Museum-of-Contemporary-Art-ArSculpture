@@ -498,6 +498,7 @@ export async function loadPiece({ onProgress } = {}) {
     root,
     spot,                  // the sculpture's centre, in image space
     height: size.y * s,    // ...and its height
+    source: apex.clone(),  // where its light starts, on the ceiling above it
 
     // time in seconds; light = the room's light this frame (1 = steady), from the shade's flicker;
     // hidden(point) = whether a person stands in front of a world point (occlusion.js)
