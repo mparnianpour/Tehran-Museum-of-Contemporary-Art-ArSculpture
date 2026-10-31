@@ -9,9 +9,8 @@ the atrium gives every phone the same place for it.
 **Live:** https://mparnianpour.github.io/Tehran-Museum-of-Contemporary-Art-ArSculpture/
 
 **Previous version (backup):** https://mparnianpour.github.io/Tehran-Museum-of-Contemporary-Art-ArSculpture/backup/
-(the piece as it was before the umbrella of spill, the glow kept to the sculpture and the
-light's glow moved to where its beam starts: commit `cf89645`. The earlier atrium version, with
-`atrium.jpg`, is commit `5859256`.)
+(the piece as it was before the dust in the light was cut to 78 motes: commit `738b5de`. The
+earlier atrium version, with `atrium.jpg`, is commit `5859256`.)
 
 ## Using it
 

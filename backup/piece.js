@@ -39,8 +39,13 @@ const BELL_WIDTH = 200;          // half-width of the bright bell once it has op
 const BELL_TOP = 185;            // how far below the source it takes to open (the rounded top)
 const BELL_FADE = 610;           // the bell dims by e (about 2.7×) every this far down
 const COLUMN_FADE = 980;         // the brighter column down the middle lasts longer
-const SPILL_WIDTH = 380;         // the faint wide glow round it
 const LIGHT_END = 1550;          // how far down the light has faded out completely
+// The spill round the beam, opened like an umbrella: a canopy curving out and down from the
+// source to its rim, glowing just under its curve and dimming below it.
+const SPILL_WIDTH = 350;         // half-width of the umbrella at its rim
+const SPILL_DROP = 62;           // how far below the source its rim bends down
+const SPILL_FADE = 75;           // it dims by e every this far below its canopy
+const SPILL = 0.3;               // how bright it is, next to the beam
 const WARMTH = 0.9;              // how warm the light is: 1 = full sunlight colour, 0.9 = 10% less
 // A colour with its warmth scaled by WARMTH (pulled toward the grey of the same brightness).
 function warm(r, g, b) {
@@ -60,11 +65,13 @@ const LIGHT_ON_SILVER = 1.4;     // how brightly the silver shows the light from
 const GLINTS = 6;                // sparkles where the silver reflects the light straight out
 const GLINT_SIZE = 76;           // photo pixels
 const HALO = 0.3;                // light scattered off the sculpture into the haze
+const HALO_SIZE = [0.7, 1.7];    // its glow's width and height, in sculpture heights: narrow, so it hugs the sculpture
 
 // ---------------------------------------------------------------------------
 // The light, like a downlight's pattern on a wall (profile 25 in the reference sheet): a small
 // source on the ceiling, a bright bell of light right under it with a rounded top, a brighter
-// column carrying on down its middle as the bell fades, and a faint wide glow round it all.
+// column carrying on down its middle as the bell fades, and round it all a faint spill opened
+// like an umbrella.
 // Drawn on the wall behind the sculpture.
 // ---------------------------------------------------------------------------
 const NOISE = `
@@ -110,6 +117,9 @@ uniform float bellTop;
 uniform float bellFade;
 uniform float columnFade;
 uniform float spillWidth;
+uniform float spillRadius; // the curve of the umbrella's canopy
+uniform float spillFade;
+uniform float spill;
 uniform float end;
 uniform vec3 core;
 uniform vec3 haze;
@@ -126,11 +136,16 @@ void main() {
   float w = bellWidth * (sqrt(1.0 - (1.0 - t) * (1.0 - t)) + 0.12 * max(h - bellTop, 0.0) / bellTop) + 0.002;
   float bell = (1.0 - smoothstep(w * 0.4, w * 1.15, x)) * exp(-max(h, 0.0) / bellFade) * below;
   float column = exp(-pow(x / (w * 0.32), 2.0)) * exp(-max(h, 0.0) / columnFade) * below;
-  float spill = exp(-pow(x / spillWidth, 2.0)) * exp(-max(h, 0.0) / (bellFade * 1.3)) * smoothstep(-0.02, 0.02, h);
+  // the umbrella: its canopy, an arc from the source down to the rim; the glow starts at it and
+  // dims below, and thins out towards the rim
+  float canopy = spillRadius - sqrt(max(spillRadius * spillRadius - x * x, 0.0));
+  float under = h - canopy;
+  float umbrella = smoothstep(-0.014, 0.006, under) * exp(-max(under, 0.0) / spillFade)
+    * (1.0 - smoothstep(spillWidth * 0.8, spillWidth, x));
   float fade = 1.0 - smoothstep(end * 0.55, end, h);
   float sides = smoothstep(0.0, 0.1, vUv.x) * smoothstep(1.0, 0.9, vUv.x);   // the card's edges never show
   float mist = 0.9 + 0.2 * fbm(vPos * 8.0 + vec3(0.0, time * 0.04, time * 0.03));
-  float lit = (bell * (0.7 + 0.6 * column) + 0.5 * column + 0.3 * spill) * fade * sides * mist;
+  float lit = (bell * (0.7 + 0.6 * column) + 0.5 * column + spill * umbrella) * fade * sides * mist;
   vec3 col = mix(haze, core, clamp(0.3 + 0.7 * (bell + column), 0.0, 1.0));
   gl_FragColor = vec4(col * lit * strength, 1.0);
 }`;
@@ -138,7 +153,8 @@ void main() {
 // The light on the wall behind the sculpture: a card in the photo's plane, hanging from `source`.
 function createLight(source, wallZ) {
   const end = LIGHT_END / W;
-  const halfWidth = (SPILL_WIDTH * 1.6) / W;   // the glow has faded out by the card's edges
+  // the bell, opened out at the bottom, and the umbrella's rim end inside the card's edges
+  const halfWidth = Math.max(BELL_WIDTH * 2.4, SPILL_WIDTH * 1.15) / W;
   const above = (BELL_TOP * 0.4) / W;
   const g = new THREE.PlaneGeometry(halfWidth * 2, end + above);
   g.translate(source.x, source.y + above - (end + above) / 2, wallZ);
@@ -153,6 +169,9 @@ function createLight(source, wallZ) {
       bellFade: { value: BELL_FADE / W },
       columnFade: { value: COLUMN_FADE / W },
       spillWidth: { value: SPILL_WIDTH / W },
+      spillRadius: { value: (SPILL_WIDTH * SPILL_WIDTH + SPILL_DROP * SPILL_DROP) / (2 * SPILL_DROP) / W },
+      spillFade: { value: SPILL_FADE / W },
+      spill: { value: SPILL },
       end: { value: end },
       core: { value: CONE_CORE },
       haze: { value: CONE_HAZE },
@@ -441,7 +460,8 @@ export async function loadPiece({ onProgress } = {}) {
   const source = new THREE.Sprite(new THREE.SpriteMaterial({
     map: sourceTexture(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false,
   }));
-  source.position.copy(apex).setZ(z + 0.004);
+  // at the top of the light on the wall, so from any side it's where the beam starts
+  source.position.copy(apex).setZ(0.0015 + 0.002);
   source.scale.set(SOURCE_SIZE[0] / W, SOURCE_SIZE[1] / W, 1);
   source.renderOrder = 3;
   root.add(source);
@@ -488,7 +508,7 @@ export async function loadPiece({ onProgress } = {}) {
     map: haloTexture(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false, opacity: HALO,
   }));
   halo.position.copy(spot).setZ(0.001);
-  halo.scale.setScalar(size.y * s * 1.7);
+  halo.scale.set(size.y * s * HALO_SIZE[0], size.y * s * HALO_SIZE[1], 1);
   halo.renderOrder = 1;
   root.add(halo);
 
@@ -498,7 +518,7 @@ export async function loadPiece({ onProgress } = {}) {
     root,
     spot,                  // the sculpture's centre, in image space
     height: size.y * s,    // ...and its height
-    source: apex.clone(),  // where its light starts, on the ceiling above it
+    source: source.position.clone(),   // where its light starts, on the ceiling above it
 
     // time in seconds; light = the room's light this frame (1 = steady), from the shade's flicker;
     // hidden(point) = whether a person stands in front of a world point (occlusion.js)
