@@ -44,7 +44,7 @@ const LIGHT_END = 1550;          // how far down the light has faded out complet
 // source to its rim, glowing just under its curve and dimming below it.
 const SPILL_WIDTH = 480;         // half-width of the umbrella at its rim
 const SPILL_DROP = 120;          // how far below the source its rim bends down
-const SPILL_FADE = 110;          // it dims by e every this far below its canopy
+const SPILL_FADE = 75;           // it dims by e every this far below its canopy
 const SPILL = 0.3;               // how bright it is, next to the beam
 const WARMTH = 0.9;              // how warm the light is: 1 = full sunlight colour, 0.9 = 10% less
 // A colour with its warmth scaled by WARMTH (pulled toward the grey of the same brightness).
