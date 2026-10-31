@@ -39,7 +39,6 @@ const BELL_WIDTH = 200;          // half-width of the bright bell once it has op
 const BELL_TOP = 185;            // how far below the source it takes to open (the rounded top)
 const BELL_FADE = 610;           // the bell dims by e (about 2.7×) every this far down
 const COLUMN_FADE = 980;         // the brighter column down the middle lasts longer
-const SPILL_WIDTH = 380;         // the faint wide glow round it
 const LIGHT_END = 1550;          // how far down the light has faded out completely
 const WARMTH = 0.9;              // how warm the light is: 1 = full sunlight colour, 0.9 = 10% less
 // A colour with its warmth scaled by WARMTH (pulled toward the grey of the same brightness).
@@ -64,7 +63,7 @@ const HALO = 0.3;                // light scattered off the sculpture into the h
 // ---------------------------------------------------------------------------
 // The light, like a downlight's pattern on a wall (profile 25 in the reference sheet): a small
 // source on the ceiling, a bright bell of light right under it with a rounded top, a brighter
-// column carrying on down its middle as the bell fades, and a faint wide glow round it all.
+// column carrying on down its middle as the bell fades. Nothing outside the beam.
 // Drawn on the wall behind the sculpture.
 // ---------------------------------------------------------------------------
 const NOISE = `
@@ -109,7 +108,6 @@ uniform float bellWidth;   // see the settings of the same names (image units)
 uniform float bellTop;
 uniform float bellFade;
 uniform float columnFade;
-uniform float spillWidth;
 uniform float end;
 uniform vec3 core;
 uniform vec3 haze;
@@ -126,11 +124,10 @@ void main() {
   float w = bellWidth * (sqrt(1.0 - (1.0 - t) * (1.0 - t)) + 0.12 * max(h - bellTop, 0.0) / bellTop) + 0.002;
   float bell = (1.0 - smoothstep(w * 0.4, w * 1.15, x)) * exp(-max(h, 0.0) / bellFade) * below;
   float column = exp(-pow(x / (w * 0.32), 2.0)) * exp(-max(h, 0.0) / columnFade) * below;
-  float spill = exp(-pow(x / spillWidth, 2.0)) * exp(-max(h, 0.0) / (bellFade * 1.3)) * smoothstep(-0.02, 0.02, h);
   float fade = 1.0 - smoothstep(end * 0.55, end, h);
   float sides = smoothstep(0.0, 0.1, vUv.x) * smoothstep(1.0, 0.9, vUv.x);   // the card's edges never show
   float mist = 0.9 + 0.2 * fbm(vPos * 8.0 + vec3(0.0, time * 0.04, time * 0.03));
-  float lit = (bell * (0.7 + 0.6 * column) + 0.5 * column + 0.3 * spill) * fade * sides * mist;
+  float lit = (bell * (0.7 + 0.6 * column) + 0.5 * column) * fade * sides * mist;
   vec3 col = mix(haze, core, clamp(0.3 + 0.7 * (bell + column), 0.0, 1.0));
   gl_FragColor = vec4(col * lit * strength, 1.0);
 }`;
@@ -138,7 +135,7 @@ void main() {
 // The light on the wall behind the sculpture: a card in the photo's plane, hanging from `source`.
 function createLight(source, wallZ) {
   const end = LIGHT_END / W;
-  const halfWidth = (SPILL_WIDTH * 1.6) / W;   // the glow has faded out by the card's edges
+  const halfWidth = (BELL_WIDTH * 2.4) / W;   // the bell, opened out at the bottom, ends inside the card's edges
   const above = (BELL_TOP * 0.4) / W;
   const g = new THREE.PlaneGeometry(halfWidth * 2, end + above);
   g.translate(source.x, source.y + above - (end + above) / 2, wallZ);
@@ -152,7 +149,6 @@ function createLight(source, wallZ) {
       bellTop: { value: BELL_TOP / W },
       bellFade: { value: BELL_FADE / W },
       columnFade: { value: COLUMN_FADE / W },
-      spillWidth: { value: SPILL_WIDTH / W },
       end: { value: end },
       core: { value: CONE_CORE },
       haze: { value: CONE_HAZE },
