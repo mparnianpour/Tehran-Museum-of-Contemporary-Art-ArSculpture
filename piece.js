@@ -56,6 +56,7 @@ const rgba = (r, g, b, a) => `rgba(${warm(r, g, b).map(Math.round).join(',')},${
 const CONE_CORE = new THREE.Color(...warm(1.0, 0.91, 0.70));   // sunlight at the heart of the cone
 const CONE_HAZE = new THREE.Color(...warm(0.95, 0.68, 0.36));  // golden lit haze at its edges
 const LIGHT_STRENGTH = 0.75;
+const HAZE_DRIFT = 0.04;         // how much the haze drifting through the light brightens and dims it (0.04: ±2%)
 const SOURCE_SIZE = [212, 60];   // the bright opening on the ceiling, seen from below (width, height)
 const DUST = 260;                // motes drifting in the light
 const DUST_SIZE = 8;             // photo pixels
@@ -144,7 +145,7 @@ void main() {
     * (1.0 - smoothstep(spillWidth * 0.8, spillWidth, x));
   float fade = 1.0 - smoothstep(end * 0.55, end, h);
   float sides = smoothstep(0.0, 0.1, vUv.x) * smoothstep(1.0, 0.9, vUv.x);   // the card's edges never show
-  float mist = 0.9 + 0.2 * fbm(vPos * 8.0 + vec3(0.0, time * 0.04, time * 0.03));
+  float mist = ${(1 - HAZE_DRIFT / 2).toFixed(3)} + ${HAZE_DRIFT.toFixed(3)} * fbm(vPos * 8.0 + vec3(0.0, time * 0.04, time * 0.03));
   float lit = (bell * (0.7 + 0.6 * column) + 0.5 * column + spill * umbrella) * fade * sides * mist;
   vec3 col = mix(haze, core, clamp(0.3 + 0.7 * (bell + column), 0.0, 1.0));
   gl_FragColor = vec4(col * lit * strength, 1.0);
