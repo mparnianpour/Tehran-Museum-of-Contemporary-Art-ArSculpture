@@ -42,10 +42,10 @@ const COLUMN_FADE = 980;         // the brighter column down the middle lasts lo
 const LIGHT_END = 1550;          // how far down the light has faded out completely
 // The spill round the beam, opened like an umbrella: a canopy curving out and down from the
 // source to its rim, glowing just under its curve and dimming below it.
-const SPILL_WIDTH = 560;         // half-width of the umbrella at its rim
-const SPILL_DROP = 260;          // how far below the source its rim bends down
-const SPILL_FADE = 90;           // it dims by e every this far below its canopy
-const SPILL = 0.32;              // how bright it is, next to the beam
+const SPILL_WIDTH = 480;         // half-width of the umbrella at its rim
+const SPILL_DROP = 120;          // how far below the source its rim bends down
+const SPILL_FADE = 110;          // it dims by e every this far below its canopy
+const SPILL = 0.3;               // how bright it is, next to the beam
 const WARMTH = 0.9;              // how warm the light is: 1 = full sunlight colour, 0.9 = 10% less
 // A colour with its warmth scaled by WARMTH (pulled toward the grey of the same brightness).
 function warm(r, g, b) {
