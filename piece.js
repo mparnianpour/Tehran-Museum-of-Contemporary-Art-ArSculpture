@@ -459,7 +459,8 @@ export async function loadPiece({ onProgress } = {}) {
   const source = new THREE.Sprite(new THREE.SpriteMaterial({
     map: sourceTexture(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false,
   }));
-  source.position.copy(apex).setZ(z + 0.004);
+  // at the top of the light on the wall, so from any side it's where the beam starts
+  source.position.copy(apex).setZ(0.0015 + 0.002);
   source.scale.set(SOURCE_SIZE[0] / W, SOURCE_SIZE[1] / W, 1);
   source.renderOrder = 3;
   root.add(source);
@@ -516,7 +517,7 @@ export async function loadPiece({ onProgress } = {}) {
     root,
     spot,                  // the sculpture's centre, in image space
     height: size.y * s,    // ...and its height
-    source: apex.clone(),  // where its light starts, on the ceiling above it
+    source: source.position.clone(),   // where its light starts, on the ceiling above it
 
     // time in seconds; light = the room's light this frame (1 = steady), from the shade's flicker;
     // hidden(point) = whether a person stands in front of a world point (occlusion.js)
