@@ -42,8 +42,8 @@ const COLUMN_FADE = 980;         // the brighter column down the middle lasts lo
 const LIGHT_END = 1550;          // how far down the light has faded out completely
 // The spill round the beam, opened like an umbrella: a canopy curving out and down from the
 // source to its rim, glowing just under its curve and dimming below it.
-const SPILL_WIDTH = 480;         // half-width of the umbrella at its rim
-const SPILL_DROP = 120;          // how far below the source its rim bends down
+const SPILL_WIDTH = 350;         // half-width of the umbrella at its rim
+const SPILL_DROP = 62;           // how far below the source its rim bends down
 const SPILL_FADE = 75;           // it dims by e every this far below its canopy
 const SPILL = 0.3;               // how bright it is, next to the beam
 const WARMTH = 0.9;              // how warm the light is: 1 = full sunlight colour, 0.9 = 10% less
@@ -140,7 +140,7 @@ void main() {
   float canopy = spillRadius - sqrt(max(spillRadius * spillRadius - x * x, 0.0));
   float under = h - canopy;
   float umbrella = smoothstep(-0.014, 0.006, under) * exp(-max(under, 0.0) / spillFade)
-    * (1.0 - smoothstep(spillWidth * 0.7, spillWidth, x));
+    * (1.0 - smoothstep(spillWidth * 0.8, spillWidth, x));
   float fade = 1.0 - smoothstep(end * 0.55, end, h);
   float sides = smoothstep(0.0, 0.1, vUv.x) * smoothstep(1.0, 0.9, vUv.x);   // the card's edges never show
   float mist = 0.9 + 0.2 * fbm(vPos * 8.0 + vec3(0.0, time * 0.04, time * 0.03));
