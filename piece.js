@@ -65,6 +65,7 @@ const LIGHT_ON_SILVER = 1.4;     // how brightly the silver shows the light from
 const GLINTS = 6;                // sparkles where the silver reflects the light straight out
 const GLINT_SIZE = 76;           // photo pixels
 const HALO = 0.3;                // light scattered off the sculpture into the haze
+const HALO_SIZE = [0.7, 1.7];    // its glow's width and height, in sculpture heights: narrow, so it hugs the sculpture
 
 // ---------------------------------------------------------------------------
 // The light, like a downlight's pattern on a wall (profile 25 in the reference sheet): a small
@@ -507,7 +508,7 @@ export async function loadPiece({ onProgress } = {}) {
     map: haloTexture(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false, opacity: HALO,
   }));
   halo.position.copy(spot).setZ(0.001);
-  halo.scale.setScalar(size.y * s * 1.7);
+  halo.scale.set(size.y * s * HALO_SIZE[0], size.y * s * HALO_SIZE[1], 1);
   halo.renderOrder = 1;
   root.add(halo);
 
