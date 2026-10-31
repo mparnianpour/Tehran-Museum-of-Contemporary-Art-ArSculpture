@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Simorgh</title>
-  <meta name="description" content="Point your phone at the photograph: the Simorgh hangs between the pillars, held in two projector beams.">
+  <meta name="description" content="Point your phone at the photograph: the Simorgh hangs under the beam between the pillars, held in a warm light from the ceiling.">
   <meta name="theme-color" content="#04060f">
   <!-- 8th Wall engine (Niantic Spatial): world tracking + image targets. See lib/8thwall/LICENSE. -->
   <script src="../lib/8thwall/xr.js" async data-preload-chunks="slam"></script>
@@ -38,7 +38,7 @@
       background: radial-gradient(120% 70% at 50% 0%, #0d1a46 0%, var(--bg) 62%);
       text-align: center;
     }
-    .photo { position: relative; width: min(46vw, 210px); aspect-ratio: 721 / 1280; margin: 0; }
+    .photo { position: relative; width: min(46vw, 210px); aspect-ratio: 3 / 4; margin: 0; }
     .photo img {
       width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 4px;
       filter: saturate(0.6) brightness(0.8);
@@ -67,6 +67,25 @@
       transition: opacity 0.6s;
     }
     .hint.found { opacity: 0; pointer-events: none; }
+    .tag-setup {
+      position: fixed; left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right));
+      bottom: calc(max(16px, env(safe-area-inset-bottom)) + 54px); z-index: 10; margin: 0; padding: 12px 14px;
+      border-radius: 14px; font-size: 13px; line-height: 1.45; color: var(--ink); background: rgba(6, 12, 34, 0.8);
+      -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); pointer-events: auto;
+    }
+    .tag-setup h2 { margin: 0 0 4px; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; }
+    .tag-setup p { margin: 0; color: var(--muted); }
+    .tag-setup pre {
+      margin: 8px 0; padding: 8px; border-radius: 8px; background: rgba(127, 166, 255, 0.1);
+      font: 12px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; user-select: all;
+    }
+    .tag-setup .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tag-setup button {
+      appearance: none; border: 0; border-radius: 999px; padding: 7px 12px; font: inherit; font-weight: 600;
+      color: #050a1c; background: var(--ink); cursor: pointer;
+    }
+    .tag-setup button:disabled { opacity: 0.35; cursor: default; }
+    .tag-setup button.quiet { color: var(--ink); background: rgba(127, 166, 255, 0.18); }
     .back {
       position: fixed; left: max(14px, env(safe-area-inset-left)); bottom: max(16px, env(safe-area-inset-bottom)); z-index: 10;
       width: 42px; height: 42px; border-radius: 50%; border: 0; display: grid; place-items: center;
@@ -77,7 +96,7 @@
 <body data-state="setup">
 
   <main class="setup" id="setup">
-    <figure class="photo"><img src="atrium.jpg" alt="The photograph to point at: a concrete atrium between tall pillars"></figure>
+    <figure class="photo"><img src="../lantern.jpg" alt="The photograph to point at: looking up past a concrete beam between two pillars to the ceiling"></figure>
     <h1>Simorgh</h1>
     <p class="lead">Point your phone at this view: the photograph, or the atrium itself.</p>
     <button class="start" id="start" type="button" disabled>Start camera</button>
@@ -91,6 +110,19 @@
     <button class="back" id="back" type="button" aria-label="Back">
       <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l10 10M14 4L4 14"/></svg>
     </button>
+    <section class="tag-setup" id="tag-setup" aria-label="Position tag setup" hidden>
+      <h2>Position tag setup</h2>
+      <p id="ts-tag" role="status"></p>
+      <p id="ts-scale"></p>
+      <p id="ts-scene"></p>
+      <pre id="ts-code"></pre>
+      <div class="actions">
+        <button id="ts-copy" type="button" disabled>Copy code</button>
+        <button id="ts-link" type="button" disabled>Copy test link</button>
+        <button id="ts-save" type="button" disabled>Save on this phone</button>
+        <button id="ts-forget" class="quiet" type="button" hidden>Forget saved code</button>
+      </div>
+    </section>
     <canvas id="xr-canvas"></canvas>
   </section>
 

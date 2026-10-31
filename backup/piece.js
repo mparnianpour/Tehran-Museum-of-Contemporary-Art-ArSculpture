@@ -11,60 +11,36 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 // ---------------------------------------------------------------------------
-// The photograph (atrium.jpg). 8th Wall tracks its centre 3:4 band.
+// The photograph (lantern.jpg): looking up past the beam between the inner pillars to the
+// ceiling. Already 3:4, so 8th Wall tracks all of it.
 // ---------------------------------------------------------------------------
-const W = 721;
+const W = 960;
 const H = 1280;
 const CROP_H = Math.round(W / 0.75);
 const CROP_TOP = Math.round((H - CROP_H) / 2);
-export const PHOTO = { src: 'atrium.jpg', width: W, height: H, cropTop: CROP_TOP, cropHeight: CROP_H };
+export const PHOTO = { src: '../lantern.jpg', width: W, height: H, cropTop: CROP_TOP, cropHeight: CROP_H };
 
 // A pixel of the photo -> image space.
 const at = (x, y, z = 0) => new THREE.Vector3((x - W / 2) / W, (CROP_TOP + CROP_H / 2 - y) / W, z);
 
 // ---------------------------------------------------------------------------
-// More photos of the atrium, from other spots on the ramp (views/, each already cut to 3:4,
-// 720×960). Seeing any of them places the piece too. Each is tied to atrium.jpg through the
-// inner pillars, the plane the sculpture hangs in: the light fixture on the beam between their
-// tops, and the gap between them on the rows below it (photo pixels; atrium.jpg's in TIE).
-// ---------------------------------------------------------------------------
-const TIE = { light: [362, 315], gap: [306, 410] };
-const VIEW_SHOTS = [
-  { name: 'view-1', src: 'views/view-1.jpg', light: [355, 226], gap: [293, 418] },
-  { name: 'view-2', src: 'views/view-2.jpg', light: [374, 10], gap: [307, 436] },
-  { name: 'view-3', src: 'views/view-3.jpg', light: [358, 154], gap: [299, 413] },
-];
-const VIEW_W = 720;
-const VIEW_H = 960;
-
-// toView: a point of atrium.jpg's image space -> the view's (p × scale + offset)
-export const VIEWS = VIEW_SHOTS.map((v) => {
-  const k = (v.gap[1] - v.gap[0]) / (TIE.gap[1] - TIE.gap[0]);   // view pixels per atrium.jpg pixel
-  const scale = (k * W) / VIEW_W;
-  const light = new THREE.Vector3((v.light[0] - VIEW_W / 2) / VIEW_W, (VIEW_H / 2 - v.light[1]) / VIEW_W, 0);
-  const offset = light.sub(at(...TIE.light).multiplyScalar(scale));
-  return { name: v.name, src: v.src, width: VIEW_W, height: VIEW_H, cropTop: 0, cropHeight: VIEW_H, toView: { scale, offset } };
-});
-
-// ---------------------------------------------------------------------------
 // Settings (all in photo pixels, traced from the photo)
 // ---------------------------------------------------------------------------
 const MODEL_URL = new URL('../model/simorgh.glb', import.meta.url).href;
-const GAP = [308, 409];          // facing edges of the two inner pillars
-const MODEL_Y = 530;             // the sculpture's centre
-const FILL = 0.92 * 1.3;         // share of the gap the sculpture's width takes (30% larger than a 0.92 fit)
+const SPOT = [488, 905];         // the sculpture's centre: the middle of the circle marked on the photo
+const SCULPTURE_HEIGHT = 900;    // its height: half as big again as nine tenths of the circle's
 
-const SOURCE = [359, 150];       // the light, on the ceiling right above the sculpture
-const BEAM_ANGLE = 13;           // the beam's half-angle, degrees
+const SOURCE = [488, 130];       // the light, on the ceiling right above the sculpture
+const BEAM_ANGLE = 16;           // the beam's half-angle, degrees
 const CONE_TAN = Math.tan(THREE.MathUtils.degToRad(BEAM_ANGLE));
-const OPENING = 6;               // the light's own size where it leaves the ceiling
+const OPENING = 15;              // the light's own size where it leaves the ceiling
 // The light's pattern, shaped like profile 25 (photo pixels):
-const BELL_WIDTH = 115;          // half-width of the bright bell once it has opened out
-const BELL_TOP = 90;             // how far below the source it takes to open (the rounded top)
-const BELL_FADE = 300;           // the bell dims by e (about 2.7×) every this far down
-const COLUMN_FADE = 480;         // the brighter column down the middle lasts longer
-const SPILL_WIDTH = 210;         // the faint wide glow round it
-const LIGHT_END = 760;           // how far down the light has faded out completely
+const BELL_WIDTH = 200;          // half-width of the bright bell once it has opened out
+const BELL_TOP = 185;            // how far below the source it takes to open (the rounded top)
+const BELL_FADE = 610;           // the bell dims by e (about 2.7×) every this far down
+const COLUMN_FADE = 980;         // the brighter column down the middle lasts longer
+const SPILL_WIDTH = 380;         // the faint wide glow round it
+const LIGHT_END = 1550;          // how far down the light has faded out completely
 const WARMTH = 0.9;              // how warm the light is: 1 = full sunlight colour, 0.9 = 10% less
 // A colour with its warmth scaled by WARMTH (pulled toward the grey of the same brightness).
 function warm(r, g, b) {
@@ -75,14 +51,14 @@ const rgba = (r, g, b, a) => `rgba(${warm(r, g, b).map(Math.round).join(',')},${
 const CONE_CORE = new THREE.Color(...warm(1.0, 0.91, 0.70));   // sunlight at the heart of the cone
 const CONE_HAZE = new THREE.Color(...warm(0.95, 0.68, 0.36));  // golden lit haze at its edges
 const LIGHT_STRENGTH = 0.75;
-const SOURCE_SIZE = [84, 24];    // the bright opening on the ceiling, seen from below (width, height)
+const SOURCE_SIZE = [212, 60];   // the bright opening on the ceiling, seen from below (width, height)
 const DUST = 260;                // motes drifting in the light
-const DUST_SIZE = 3.2;           // photo pixels
+const DUST_SIZE = 8;             // photo pixels
 const SPOT_INTENSITY = 5;        // the cone's real light on the sculpture
 const ENV_INTENSITY = 1.15;      // the room's light on the sculpture, before it flickers
 const LIGHT_ON_SILVER = 1.4;     // how brightly the silver shows the light from above
 const GLINTS = 6;                // sparkles where the silver reflects the light straight out
-const GLINT_SIZE = 30;           // photo pixels
+const GLINT_SIZE = 76;           // photo pixels
 const HALO = 0.3;                // light scattered off the sculpture into the haze
 
 // ---------------------------------------------------------------------------
@@ -162,8 +138,8 @@ void main() {
 // The light on the wall behind the sculpture: a card in the photo's plane, hanging from `source`.
 function createLight(source, wallZ) {
   const end = LIGHT_END / W;
-  const halfWidth = Math.min((SPILL_WIDTH * 1.9) / W, 0.46);
-  const above = 30 / W;
+  const halfWidth = (SPILL_WIDTH * 1.6) / W;   // the glow has faded out by the card's edges
+  const above = (BELL_TOP * 0.4) / W;
   const g = new THREE.PlaneGeometry(halfWidth * 2, end + above);
   g.translate(source.x, source.y + above - (end + above) / 2, wallZ);
   const material = new THREE.ShaderMaterial({
@@ -363,7 +339,7 @@ function findGlints(model, apex, count) {
   const picked = [];
   for (const g of found) {
     if (picked.length >= count) break;
-    if (picked.every((q) => q.pos.distanceTo(g.pos) > 0.016)) picked.push(g);
+    if (picked.every((q) => q.pos.distanceTo(g.pos) > (GLINT_SIZE * 0.4) / W)) picked.push(g);
   }
   return picked;
 }
@@ -439,14 +415,13 @@ export async function loadPiece({ onProgress } = {}) {
     materials.add(o.material);
   });
 
-  // Fit the sculpture's width to the gap between the pillars, centred between them,
-  // its back resting on the photo.
+  // The sculpture at its spot and height, its back resting on the photo.
   model.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(model);
   const size = box.getSize(new THREE.Vector3());
   const centre = box.getCenter(new THREE.Vector3());
-  const s = (((GAP[1] - GAP[0]) * FILL) / W) / size.x;
-  const spot = at((GAP[0] + GAP[1]) / 2, MODEL_Y);
+  const s = (SCULPTURE_HEIGHT / W) / size.y;
+  const spot = at(...SPOT);
   const depth = size.z * s;
   model.scale.setScalar(s);
   model.position.set(spot.x - centre.x * s, spot.y - centre.y * s, -box.min.z * s + 0.002);
@@ -521,7 +496,8 @@ export async function loadPiece({ onProgress } = {}) {
   const world = new THREE.Vector3();
   return {
     root,
-    spot,   // the sculpture's centre, in image space
+    spot,                  // the sculpture's centre, in image space
+    height: size.y * s,    // ...and its height
 
     // time in seconds; light = the room's light this frame (1 = steady), from the shade's flicker;
     // hidden(point) = whether a person stands in front of a world point (occlusion.js)

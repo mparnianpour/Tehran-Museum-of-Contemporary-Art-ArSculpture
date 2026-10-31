@@ -9,8 +9,8 @@ the atrium gives every phone the same place for it.
 **Live:** https://mparnianpour.github.io/Tehran-Museum-of-Contemporary-Art-ArSculpture/
 
 **Previous version (backup):** https://mparnianpour.github.io/Tehran-Museum-of-Contemporary-Art-ArSculpture/backup/
-(the piece as it was before the new photo and the tag: the view down the atrium between the
-pillars, `atrium.jpg` and its three side views, hiding behind people and near things; commit `5859256`)
+(the piece as it was before a tap hung it from the tapped point and the setup panel could fold
+away: commit `7e8bca8`. The earlier atrium version, with `atrium.jpg`, is commit `5859256`.)
 
 ## Using it
 
@@ -80,8 +80,7 @@ was taken out, since it cut dark holes in the light when the photo placed the sc
 | `marker/` | The position tag to print (A4 PDF) |
 | `backup/` | The previous version, kept live in case this one misbehaves |
 | `model/simorgh.glb` | The sculpture |
-| `model/depth.onnx` | The backup's depth model: Depth Anything V2 Small, cut to 308×308 and compressed |
-| `lib/` | 8th Wall engine, XRExtras, three.js, MediaPipe person segmentation, js-aruco2; ONNX Runtime Web (the backup's) |
+| `lib/` | 8th Wall engine, XRExtras, three.js, MediaPipe person segmentation, js-aruco2 |
 
 The look is set by named constants at the top of `piece.js` (the light's source, bell shape,
 warmth, the sculpture's size and height) and `shade.js` (shade, blue cast, flicker).
@@ -91,7 +90,5 @@ warmth, the sculpture's size and height) and `shade.js` (shade, blue cast, flick
 AR engine: 8th Wall © Niantic Spatial, Inc., used under its [engine license](lib/8thwall/LICENSE),
 provided without warranty. [three.js](lib/three/LICENSE) (MIT) and
 [XRExtras](lib/xrextras/LICENSE). Person segmentation: [MediaPipe](lib/mediapipe/README.txt)
-(Apache-2.0). Depth, in the backup: [Depth Anything V2 Small](model/depth-LICENSE.txt) (Apache-2.0; ONNX export
-by fabio-sim/Depth-Anything-ONNX, Apache-2.0), run with [ONNX Runtime Web](lib/onnxruntime/LICENSE)
-(MIT). Tag detection: [js-aruco2](lib/js-aruco2/LICENSE.txt) (MIT); the tag is AprilTag 36h11
+(Apache-2.0). Tag detection: [js-aruco2](lib/js-aruco2/LICENSE.txt) (MIT); the tag is AprilTag 36h11
 (AprilRobotics, BSD 2-Clause).
