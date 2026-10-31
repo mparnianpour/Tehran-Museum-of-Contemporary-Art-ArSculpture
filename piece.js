@@ -40,6 +40,12 @@ const BELL_TOP = 185;            // how far below the source it takes to open (t
 const BELL_FADE = 610;           // the bell dims by e (about 2.7×) every this far down
 const COLUMN_FADE = 980;         // the brighter column down the middle lasts longer
 const LIGHT_END = 1550;          // how far down the light has faded out completely
+// The spill round the beam, opened like an umbrella: a canopy curving out and down from the
+// source to its rim, glowing just under its curve and dimming below it.
+const SPILL_WIDTH = 560;         // half-width of the umbrella at its rim
+const SPILL_DROP = 260;          // how far below the source its rim bends down
+const SPILL_FADE = 90;           // it dims by e every this far below its canopy
+const SPILL = 0.32;              // how bright it is, next to the beam
 const WARMTH = 0.9;              // how warm the light is: 1 = full sunlight colour, 0.9 = 10% less
 // A colour with its warmth scaled by WARMTH (pulled toward the grey of the same brightness).
 function warm(r, g, b) {
@@ -63,7 +69,8 @@ const HALO = 0.3;                // light scattered off the sculpture into the h
 // ---------------------------------------------------------------------------
 // The light, like a downlight's pattern on a wall (profile 25 in the reference sheet): a small
 // source on the ceiling, a bright bell of light right under it with a rounded top, a brighter
-// column carrying on down its middle as the bell fades. Nothing outside the beam.
+// column carrying on down its middle as the bell fades, and round it all a faint spill opened
+// like an umbrella.
 // Drawn on the wall behind the sculpture.
 // ---------------------------------------------------------------------------
 const NOISE = `
@@ -108,6 +115,10 @@ uniform float bellWidth;   // see the settings of the same names (image units)
 uniform float bellTop;
 uniform float bellFade;
 uniform float columnFade;
+uniform float spillWidth;
+uniform float spillRadius; // the curve of the umbrella's canopy
+uniform float spillFade;
+uniform float spill;
 uniform float end;
 uniform vec3 core;
 uniform vec3 haze;
@@ -124,10 +135,16 @@ void main() {
   float w = bellWidth * (sqrt(1.0 - (1.0 - t) * (1.0 - t)) + 0.12 * max(h - bellTop, 0.0) / bellTop) + 0.002;
   float bell = (1.0 - smoothstep(w * 0.4, w * 1.15, x)) * exp(-max(h, 0.0) / bellFade) * below;
   float column = exp(-pow(x / (w * 0.32), 2.0)) * exp(-max(h, 0.0) / columnFade) * below;
+  // the umbrella: its canopy, an arc from the source down to the rim; the glow starts at it and
+  // dims below, and thins out towards the rim
+  float canopy = spillRadius - sqrt(max(spillRadius * spillRadius - x * x, 0.0));
+  float under = h - canopy;
+  float umbrella = smoothstep(-0.014, 0.006, under) * exp(-max(under, 0.0) / spillFade)
+    * (1.0 - smoothstep(spillWidth * 0.7, spillWidth, x));
   float fade = 1.0 - smoothstep(end * 0.55, end, h);
   float sides = smoothstep(0.0, 0.1, vUv.x) * smoothstep(1.0, 0.9, vUv.x);   // the card's edges never show
   float mist = 0.9 + 0.2 * fbm(vPos * 8.0 + vec3(0.0, time * 0.04, time * 0.03));
-  float lit = (bell * (0.7 + 0.6 * column) + 0.5 * column) * fade * sides * mist;
+  float lit = (bell * (0.7 + 0.6 * column) + 0.5 * column + spill * umbrella) * fade * sides * mist;
   vec3 col = mix(haze, core, clamp(0.3 + 0.7 * (bell + column), 0.0, 1.0));
   gl_FragColor = vec4(col * lit * strength, 1.0);
 }`;
@@ -135,7 +152,8 @@ void main() {
 // The light on the wall behind the sculpture: a card in the photo's plane, hanging from `source`.
 function createLight(source, wallZ) {
   const end = LIGHT_END / W;
-  const halfWidth = (BELL_WIDTH * 2.4) / W;   // the bell, opened out at the bottom, ends inside the card's edges
+  // the bell, opened out at the bottom, and the umbrella's rim end inside the card's edges
+  const halfWidth = Math.max(BELL_WIDTH * 2.4, SPILL_WIDTH * 1.15) / W;
   const above = (BELL_TOP * 0.4) / W;
   const g = new THREE.PlaneGeometry(halfWidth * 2, end + above);
   g.translate(source.x, source.y + above - (end + above) / 2, wallZ);
@@ -149,6 +167,10 @@ function createLight(source, wallZ) {
       bellTop: { value: BELL_TOP / W },
       bellFade: { value: BELL_FADE / W },
       columnFade: { value: COLUMN_FADE / W },
+      spillWidth: { value: SPILL_WIDTH / W },
+      spillRadius: { value: (SPILL_WIDTH * SPILL_WIDTH + SPILL_DROP * SPILL_DROP) / (2 * SPILL_DROP) / W },
+      spillFade: { value: SPILL_FADE / W },
+      spill: { value: SPILL },
       end: { value: end },
       core: { value: CONE_CORE },
       haze: { value: CONE_HAZE },
