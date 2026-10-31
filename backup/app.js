@@ -200,9 +200,9 @@ function onImagePose(detail, camera) {
 
 // ---------------------------------------------------------------------------
 // Placing by hand, for the real atrium. The photo is matched as a flat picture, so in the
-// building itself it is only found from about the spot it was taken. Instead: frame the
-// view like the photo and tap where the sculpture goes. The scene stands there, upright and
-// facing you, TAP_SIZE as wide as the view, as far away as what you tapped on (up to
+// building itself it is only found from about the spot it was taken. Instead: tap the point on
+// the ceiling it hangs from. The light starts there and the sculpture hangs straight down below
+// it, facing you, TAP_SIZE as wide as the view, as far away as what you tapped on (up to
 // PLACE_DISTANCE: in a smaller room it stands in the room, not behind its walls), and world
 // tracking keeps it in the room as you move.
 // A visitor gets PLACE_TRIES taps; after the last one the sculpture stays where it is.
@@ -253,10 +253,10 @@ function placeByHand(clientX, clientY) {
   _z.negate();
   _x.crossVectors(_y, _z).normalize();
   _y.crossVectors(_z, _x);
-  anchor.quat.setFromRotationMatrix(_basis.makeBasis(_x, _y, _z));
+  uprightOf(anchor.quat.setFromRotationMatrix(_basis.makeBasis(_x, _y, _z)), anchor.quat);
   anchor.scale = (TAP_SIZE * 2 * distance) / camera.projectionMatrix.elements[0];   // a share of the photo spanning the view
-  // the sculpture's spot lands where you tapped
-  anchor.pos.copy(tap).sub(state.piece.spot.clone().applyQuaternion(anchor.quat).multiplyScalar(anchor.scale));
+  // its light starts where you tapped
+  anchor.pos.copy(tap).sub(state.piece.source.clone().applyQuaternion(anchor.quat).multiplyScalar(anchor.scale));
   anchor.placed = true;
   anchor.byHand = true;
   anchor.group.visible = true;
@@ -307,8 +307,9 @@ function placeFromTag() {
 
 // ?setup's panel
 const setupUi = {
-  panel: $('tag-setup'), tag: $('ts-tag'), scale: $('ts-scale'), scene: $('ts-scene'), code: $('ts-code'),
-  copy: $('ts-copy'), link: $('ts-link'), save: $('ts-save'), forget: $('ts-forget'),
+  panel: $('tag-setup'), fold: $('ts-fold'), tag: $('ts-tag'), scale: $('ts-scale'), scene: $('ts-scene'),
+  code: $('ts-code'), actions: $('ts-actions'), copy: $('ts-copy'), link: $('ts-link'), save: $('ts-save'),
+  forget: $('ts-forget'),
 };
 const MOVED_ENOUGH = 0.25;   // m the phone should move while seeing the tag, for distances in metres
 let setupCode = '';
@@ -323,18 +324,18 @@ function showSetup(now) {
   const info = window.__tag || {};
   if (!t) {
     setupUi.tag.textContent = 'Tag: not seen yet. Show it to the camera.';
-    setupUi.scale.textContent = '';
+    setupUi.scale.hidden = true;
   } else {
     const ago = (now - t.seenAt) / 1000;
-    setupUi.tag.textContent = `Tag: seen ${t.sightings}×${ago < 1.5 ? `, ${info.distance} m away` : ', not in view now'}`;
-    setupUi.scale.textContent = t.moved < MOVED_ENOUGH
-      ? `Distances: step about or move the phone side to side with the tag in view (${Math.round(t.moved * 100)} of ${MOVED_ENOUGH * 100} cm)`
-      : 'Distances: measured';
+    const measured = t.moved >= MOVED_ENOUGH;
+    setupUi.tag.textContent = `Tag: seen ${t.sightings}×${ago < 1.5 ? `, ${info.distance} m away` : ', not in view now'}`
+      + (measured ? '; distances measured' : '');
+    setupUi.scale.hidden = measured;
+    setupUi.scale.textContent = `Distances: step about or move the phone side to side with the tag in view (${Math.round(t.moved * 100)} of ${MOVED_ENOUGH * 100} cm)`;
   }
-  if (!anchor.placed) setupUi.scene.textContent = 'Simorgh: not placed. Point at the view in the photo, or tap where it goes.';
-  else setupUi.scene.textContent = `Simorgh: placed by ${anchor.byHand ? 'your tap (tap again to move it)' : 'the photo'}`;
 
   setupCode = '';
+  let placed = `Simorgh: placed by ${anchor.byHand ? 'your tap' : 'the photo'}`;
   if (t && anchor.placed) {
     // the scene in the tag's frame, in metres
     _inv.copy(t.quaternion).invert();
@@ -342,11 +343,17 @@ function showSetup(now) {
     const scene = { pos: _rel.clone(), quat: _inv.clone().multiply(anchor.quat), size: anchor.scale / t.scale };
     setupCode = tagSceneCode(scene);
     const spot = state.piece.spot.clone().applyQuaternion(scene.quat).multiplyScalar(scene.size).add(scene.pos);
-    setupUi.code.textContent = `${setupCode}\nThe Simorgh: ${(scene.size * state.piece.height).toFixed(1)} m tall, `
-      + `${spot.length().toFixed(1)} m from the tag`;
-  } else setupUi.code.textContent = 'The code shows once the tag has been seen and the Simorgh is placed.';
-  for (const b of [setupUi.copy, setupUi.link, setupUi.save]) b.disabled = !setupCode;
-  setupUi.forget.hidden = !savedTagScene();
+    placed += `, ${(scene.size * state.piece.height).toFixed(1)} m tall, ${spot.length().toFixed(1)} m from the tag`;
+    setupUi.code.textContent = setupCode;
+  }
+  setupUi.scene.textContent = anchor.placed ? placed
+    : 'Simorgh: not placed. Point at the view in the photo, or tap the point on the ceiling it hangs from.';
+  // the code and its buttons only once there is one, so the panel stays small while setting up
+  const saved = !!savedTagScene();
+  setupUi.code.hidden = !setupCode;
+  setupUi.actions.hidden = !setupCode && !saved;
+  for (const b of [setupUi.copy, setupUi.link, setupUi.save]) b.hidden = !setupCode;
+  setupUi.forget.hidden = !saved;
 }
 
 async function copyText(text, button) {
@@ -366,11 +373,17 @@ setupUi.save.addEventListener('click', () => {
   if (!setupCode) return;
   try {
     localStorage.setItem(TAG_SAVED, setupCode);
-    setupUi.save.textContent = 'Saved on this phone';
+    setupUi.save.textContent = 'Saved';
   } catch {
     setupUi.save.textContent = 'Could not save';
   }
-  setTimeout(() => { setupUi.save.textContent = 'Save on this phone'; }, 2000);
+  setTimeout(() => { setupUi.save.textContent = 'Save on phone'; }, 2000);
+});
+// Hide folds the panel to its title, to see the whole scene; Show brings it back
+setupUi.fold.addEventListener('click', () => {
+  const folded = setupUi.panel.classList.toggle('folded');
+  setupUi.fold.textContent = folded ? 'Show' : 'Hide';
+  setupUi.fold.setAttribute('aria-expanded', String(!folded));
 });
 setupUi.forget.addEventListener('click', () => {
   try { localStorage.removeItem(TAG_SAVED); } catch { /* nothing saved */ }
@@ -419,7 +432,7 @@ const arModule = {
     scene.add(anchor.group);
     occlusion.start({ scene, camera, canvas: ui.xrCanvas, target: placedPiece });
     if (useTag) tag.start({ camera, canvas: ui.xrCanvas });
-    window.__xr = { scene, camera, renderer, anchor, tag };
+    window.__xr = { scene, camera, renderer, anchor, tag, piece: state.piece };
   },
   onUpdate: () => {
     const now = performance.now();
@@ -433,7 +446,7 @@ const arModule = {
       setHint(SETUP ? 'Setup: show the camera the tag, then place the Simorgh' : 'Point your camera at the view in the photo');
       clearTimeout(findTimer);
       findTimer = setTimeout(() => {
-        if (!anchor.placed) setHint(`Not found? Frame the view like the photo, then tap where the Simorgh goes${SETUP ? '' : ` (${PLACE_TRIES} tries)`}`);
+        if (!anchor.placed) setHint(`Not found? Tap the point on the ceiling it hangs from${SETUP ? '' : ` (${PLACE_TRIES} tries)`}`);
       }, FIND_WAIT);
     }
     if (status === 'failed' || status === 'denied') {
